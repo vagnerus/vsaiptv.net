@@ -170,6 +170,9 @@ export default function DetailModal({
                       if (firstPlayable) {
                         onPlayStream?.(item, firstPlayable);
                         onClose?.();
+                      } else {
+                        onPlayStream?.(item);
+                        onClose?.();
                       }
                     } else {
                       onPlayStream?.(item);

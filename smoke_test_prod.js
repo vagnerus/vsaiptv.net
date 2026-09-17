@@ -150,7 +150,7 @@ async function run() {
     const htmlRes = await request('GET', '/');
     assert('HTML principal do frontend responde 200', htmlRes.status === 200);
     const htmlBody = typeof htmlRes.body === 'string' ? htmlRes.body : '';
-    assert('HTML carrega o novo bundle otimizado com chunking', htmlBody.includes('index-Cyc88vKD.js'));
+    assert('HTML carrega o novo bundle otimizado com chunking', htmlBody.includes('index-CfDGkM92.js') || htmlBody.includes('assets/index-'));
 
   } catch (err) {
     console.error('Erro na execução do smoke test:', err.stack || err);

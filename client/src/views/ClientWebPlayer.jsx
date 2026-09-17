@@ -12,7 +12,7 @@ const FavoritesView = lazy(() => import('./FavoritesView'));
 const SearchView = lazy(() => import('./SearchView'));
 import { getPlayableUrl, getImageUrl, getPlaceholder, onImageError, getSubtitles } from '../utils/streamUtils';
 import { useProgress } from '../hooks/useProgress';
-import { Radio, X, Play, Tv } from 'lucide-react';
+import { Radio, X, Play, Tv, Loader2, AlertCircle, ArrowUp } from 'lucide-react';
 
 export default function ClientWebPlayer({ 
   user, 
@@ -42,6 +42,12 @@ export default function ClientWebPlayer({
   const [playbackSubtitles, setPlaybackSubtitles] = useState([]);
   const playlistRef = useRef([]);
 
+  // Playback UX feedback
+  const [isStartingPlayback, setIsStartingPlayback] = useState(false);
+  const [playbackErrorToast, setPlaybackErrorToast] = useState(null);
+  const [isScrolledPastPlayer, setIsScrolledPastPlayer] = useState(false);
+  const playerStageRef = useRef(null);
+
   // Detail Modal state
   const [detailModalItem, setDetailModalItem] = useState(null);
 
@@ -56,12 +62,13 @@ export default function ClientWebPlayer({
   // Progress hook
   const { continueWatching, isEpisodeWatched, refreshProgress } = useProgress();
 
-  // Scroll restoration per tab
+  // Scroll restoration per tab & detection of scroll past player
   const scrollPositionsRef = useRef({});
 
   useEffect(() => {
     const handleScroll = () => {
       scrollPositionsRef.current[activeTab] = window.scrollY;
+      setIsScrolledPastPlayer(window.scrollY > 420);
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
@@ -72,28 +79,33 @@ export default function ClientWebPlayer({
     window.scrollTo({ top: savedY, behavior: 'instant' });
   }, [activeTab]);
 
-  // Scroll suave até o player no topo da tela
+  // Scroll suave e garantido até o player no topo da tela
   const scrollToPlayer = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-
-    setTimeout(() => {
-      const stage = document.querySelector('.vsa-player-stage');
-      if (stage) {
-        stage.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (playerStageRef.current) {
+        playerStageRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    }, 120);
+    });
   };
 
   // Garante subida até o player sempre que um vídeo for iniciado
   useEffect(() => {
     if (playbackSourceUrl) {
       scrollToPlayer();
+      const t1 = setTimeout(scrollToPlayer, 120);
+      const t2 = setTimeout(scrollToPlayer, 350);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
     }
   }, [playbackSourceUrl]);
+
+  // Auto-dismiss do toast de erro após 4.5s
+  useEffect(() => {
+    if (playbackErrorToast) {
+      const timer = setTimeout(() => setPlaybackErrorToast(null), 4500);
+      return () => clearTimeout(timer);
+    }
+  }, [playbackErrorToast]);
 
   // Carrega conteúdo inicial essencial (Canais e Filmes para a Home)
   useEffect(() => {
@@ -196,6 +208,10 @@ export default function ClientWebPlayer({
     }
 
     setPlaybackInitialSeek(initialSeek || null);
+    setIsStartingPlayback(true);
+    setPlaybackErrorToast(null);
+
+    // Scroll preventivo para cima
     scrollToPlayer();
 
     try {
@@ -206,40 +222,77 @@ export default function ClientWebPlayer({
 
       const serverStream = res.data.stream || stream;
       const fullStream = { ...stream, ...serverStream };
+      const serverEpisodes = res.data.episodes || [];
 
-      if (episode) {
-        // Reproduzindo episódio específico (mescla com dados completos dos episódios retornados pelo server)
-        let fullEpisode = episode;
-        if (res.data.episodes && res.data.episodes.length > 0) {
-          const found = res.data.episodes.find((e) => String(e.id) === String(episode.id));
-          if (found) fullEpisode = { ...episode, ...found };
+      // Identificar se o conteúdo é série ou novela
+      const isSeriesOrNovela = fullStream.type === 'series' || 
+                               fullStream.category_name?.toLowerCase().includes('novela');
+
+      if (isSeriesOrNovela) {
+        // Se for série, determinar qual episódio reproduzir:
+        let targetEpisode = episode;
+
+        // Se NÃO foi passado episódio, escolher automaticamente:
+        if (!targetEpisode && serverEpisodes.length > 0) {
+          // Tenta retomar do histórico "continueWatching" se houver
+          const inProgress = (continueWatching || []).find(
+            (p) => String(p.stream_id) === String(fullStream.id) && p.episode_id
+          );
+          if (inProgress) {
+            targetEpisode = serverEpisodes.find((e) => String(e.id) === String(inProgress.episode_id)) || serverEpisodes[0];
+            if (inProgress.progress_time && !initialSeek) {
+              setPlaybackInitialSeek(inProgress.progress_time);
+            }
+          } else {
+            targetEpisode = serverEpisodes[0];
+          }
         }
-        const epUrl = getPlayableUrl(fullEpisode);
-        setPlaybackSourceUrl(epUrl);
-        const epLabel = fullStream.category_name?.toLowerCase().includes('novela') 
-          ? `Capítulo ${fullEpisode.episode_num}` 
-          : `T${fullEpisode.season_num || 1}:E${fullEpisode.episode_num}`;
-        setPlaybackTitle(`${fullStream.name} • ${epLabel} - ${fullEpisode.title || ''}`);
-        setPlaybackType('episode');
-        setPlaybackPoster(getImageUrl(fullStream));
-        setPlaybackSubtitles([
-          ...getSubtitles(fullEpisode),
-          ...getSubtitles(fullStream),
-        ]);
-        setActiveStream({ ...fullStream, playingEpisodeId: fullEpisode.id });
+
+        if (targetEpisode) {
+          // Mescla com dados do server se houver
+          const foundServerEp = serverEpisodes.find((e) => String(e.id) === String(targetEpisode.id));
+          const fullEpisode = foundServerEp ? { ...targetEpisode, ...foundServerEp } : targetEpisode;
+
+          const epUrl = getPlayableUrl(fullEpisode);
+          if (!epUrl) {
+            throw new Error('Episódio sem URL de transmissão válida.');
+          }
+
+          setPlaybackSourceUrl(epUrl);
+          const epLabel = fullStream.category_name?.toLowerCase().includes('novela') 
+            ? `Capítulo ${fullEpisode.episode_num}` 
+            : `T${fullEpisode.season_num || 1}:E${fullEpisode.episode_num}`;
+          setPlaybackTitle(`${fullStream.name} • ${epLabel} - ${fullEpisode.title || ''}`);
+          setPlaybackType('episode');
+          setPlaybackPoster(getImageUrl(fullStream));
+          setPlaybackSubtitles([
+            ...getSubtitles(fullEpisode),
+            ...getSubtitles(fullStream),
+          ]);
+          setActiveStream({ ...fullStream, playingEpisodeId: fullEpisode.id });
+          playlistRef.current = serverEpisodes;
+          scrollToPlayer();
+        } else {
+          // Série sem episódios disponíveis no catálogo: abre detalhes para o usuário
+          setDetailModalItem(fullStream);
+          setPlaybackErrorToast('Esta série ainda não possui episódios disponíveis no catálogo.');
+        }
       } else {
         // Reproduzindo canal ao vivo ou filme VOD
         const streamUrl = getPlayableUrl(fullStream);
+        if (!streamUrl) {
+          throw new Error('Conteúdo sem URL de transmissão disponível.');
+        }
         setPlaybackSourceUrl(streamUrl);
         setPlaybackTitle(fullStream.name);
         setPlaybackType(fullStream.type || 'live');
         setPlaybackPoster(getImageUrl(fullStream));
         setPlaybackSubtitles(getSubtitles(fullStream));
         setActiveStream(fullStream);
+        scrollToPlayer();
       }
 
       setupP2PTracker(fullStream.id);
-      scrollToPlayer();
     } catch (err) {
       console.error('Playback setup error:', err);
       // Fallback: tenta URL direta se a API falhou
@@ -250,7 +303,15 @@ export default function ClientWebPlayer({
         setPlaybackType(stream.type || 'live');
         setActiveStream(stream);
         scrollToPlayer();
+      } else {
+        setPlaybackErrorToast(
+          err.response?.data?.error || 
+          err.message || 
+          'Não foi possível iniciar a transmissão. Tente novamente ou selecione outro conteúdo.'
+        );
       }
+    } finally {
+      setIsStartingPlayback(false);
     }
   };
 
@@ -337,15 +398,34 @@ export default function ClientWebPlayer({
 
   return (
     <div className="vsa-app-container">
+      {/* Playback Feedback Toasts (Loading & Error notifications) */}
+      <div className="vsa-toast-container">
+        {isStartingPlayback && (
+          <div className="vsa-toast-loading animate-fade">
+            <Loader2 size={16} className="animate-spin" color="#6366f1" />
+            <span>Iniciando transmissão...</span>
+          </div>
+        )}
+        {playbackErrorToast && (
+          <div className="vsa-toast-error animate-fade">
+            <AlertCircle size={16} color="#fff" />
+            <span>{playbackErrorToast}</span>
+          </div>
+        )}
+      </div>
 
       {/* STICKY / THEATER CINEMA PLAYER (Exibido quando houver vídeo ativo) */}
       {playbackSourceUrl && (
-        <div className="vsa-player-stage" style={{
-          background: '#04060a',
-          padding: '16px 24px',
-          borderBottom: '1px solid var(--border-color)',
-          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.8)',
-        }}>
+        <div 
+          ref={playerStageRef}
+          className="vsa-player-stage" 
+          style={{
+            background: '#04060a',
+            padding: '16px 24px',
+            borderBottom: '1px solid var(--border-color)',
+            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.8)',
+          }}
+        >
           <div style={{ maxWidth: '1280px', margin: '0 auto', width: '100%' }}>
             <VideoPlayer
               sourceUrl={playbackSourceUrl}
@@ -527,6 +607,36 @@ export default function ClientWebPlayer({
           onPlayStream={(item, episode) => startPlayback(item, episode)}
           isEpisodeWatched={isEpisodeWatched}
         />
+      )}
+
+      {/* FLOATING RETURN-TO-PLAYER DOCK (Aparece quando há vídeo tocando e o usuário rolou para baixo) */}
+      {playbackSourceUrl && isScrolledPastPlayer && (
+        <div 
+          className="vsa-floating-player-bar animate-fade"
+          onClick={scrollToPlayer}
+          title="Clique para voltar ao Player no topo"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            <span className="card-live-dot" />
+            <span style={{ 
+              fontSize: '0.84rem', 
+              fontWeight: '700', 
+              color: '#fff',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: '220px'
+            }}>
+              {playbackTitle}
+            </span>
+          </div>
+          <button 
+            className="btn btn-primary btn-sm"
+            style={{ borderRadius: 'var(--radius-full)', padding: '5px 12px', fontSize: '0.78rem' }}
+          >
+            <ArrowUp size={13} style={{ marginRight: 4 }} /> Ver Player
+          </button>
+        </div>
       )}
 
       {/* MOBILE BOTTOM NAVIGATION (Oculto se vídeo estiver aberto ou modal estiver ativo) */}
