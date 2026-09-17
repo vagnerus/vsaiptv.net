@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_card">#111625</color>
+    <color name="bg_card_focused">#1E273E</color>
+    <color name="bg_card_surface">#161D2F</color>
+    <color name="bg_input">#0D121F</color>
+    <color name="bg_main">#080B11</color>
+    <color name="black_overlay">#CC000000</color>
+    <color name="border_color">#1F293D</color>
+    <color name="border_subtle">#162032</color>
+    <color name="focus_glow">#38BDF8</color>
+    <color name="focus_outline">#6366F1</color>
+    <color name="glass_border">#336366F1</color>
+    <color name="glass_card">#1A1E2C</color>
+    <color name="primary">#6366F1</color>
+    <color name="primary_light">#818CF8</color>
+    <color name="primary_variant">#4F46E5</color>
+    <color name="secondary">#06B6D4</color>
+    <color name="secondary_variant">#0891B2</color>
+    <color name="status_active">#10B981</color>
+    <color name="status_expired">#EF4444</color>
+    <color name="status_live">#EF4444</color>
+    <color name="status_p2p">#06B6D4</color>
+    <color name="status_warning">#F59E0B</color>
+    <color name="text_accent">#38BDF8</color>
+    <color name="text_muted">#64748B</color>
+    <color name="text_primary">#F8FAFC</color>
+    <color name="text_secondary">#94A3B8</color>
+    <string name="add_favorite">Favoritar</string>
+    <string name="app_name">VSAIPTV</string>
+    <string name="btn_demo">MODO DEMO / TESTE</string>
+    <string name="btn_login">CONECTAR</string>
+    <string name="clear_cache">Limpar Cache</string>
+    <string name="err_auth_failed">Falha na autenticação. Verifique usuário, senha ou status da conta.</string>
+    <string name="err_empty_fields">Por favor, preencha todos os campos.</string>
+    <string name="expires_on">Válido até: %1$s</string>
+    <string name="legal_notice">Aviso Legal &amp; Termos</string>
+    <string name="legal_text">Este aplicativo é destinado exclusivamente à reprodução de conteúdo próprio, licenciado ou autorizado. Não nos responsabilizamos pelo fornecimento de fontes de transmissão de terceiros sem autorização.</string>
+    <string name="login_subtitle">Plataforma Premium de Streaming &amp; VOD</string>
+    <string name="login_title">VSA IPTV</string>
+    <string name="logout">Sair da Conta</string>
+    <string name="nav_epg">Guia EPG</string>
+    <string name="nav_favorites">Favoritos</string>
+    <string name="nav_home">Início</string>
+    <string name="nav_live">Canais Ao Vivo</string>
+    <string name="nav_profile">Minha Conta</string>
+    <string name="nav_search">Buscar</string>
+    <string name="nav_series">Séries</string>
+    <string name="nav_settings">Ajustes</string>
+    <string name="nav_vod">Filmes</string>
+    <string name="parental_control">Controle Parental</string>
+    <string name="parental_prompt">Digite seu PIN de 4 dígitos para acessar:</string>
+    <string name="password">Senha</string>
+    <string name="remove_favorite">Remover Favorito</string>
+    <string name="screens_info">Telas: %1$s / %2$s permitidas</string>
+    <string name="search_hint">Buscar canais, filmes ou séries...</string>
+    <string name="server_url">URL / DNS do Servidor</string>
+    <string name="status_active">Plano Ativo</string>
+    <string name="status_expired">Assinatura Expirada</string>
+    <string name="username">Usuário</string>
+    <string name="watch_now">Assistir</string>
+    <style name="Theme.NexusIPTV" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryVariant">@color/primary_variant</item>
+        <item name="colorOnPrimary">@color/text_primary</item>
+
+        <item name="colorSecondary">@color/secondary</item>
+        <item name="colorSecondaryVariant">@color/secondary_variant</item>
+        <item name="colorOnSecondary">@color/text_primary</item>
+
+        <item name="android:windowBackground">@color/bg_main</item>
+        <item name="android:statusBarColor">@color/bg_main</item>
+        <item name="android:navigationBarColor">@color/bg_main</item>
+    </style>
+    <style name="Theme.NexusIPTV.Player" parent="Theme.NexusIPTV">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+</resources>

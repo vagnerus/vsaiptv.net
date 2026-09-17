@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_main"
+    android:padding="16dp">
+
+    <!-- Categories Horizontal Bar -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvCategories"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="14dp" />
+
+    <!-- Loading Spinner -->
+    <ProgressBar
+        android:id="@+id/pbLive"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:indeterminateTint="@color/secondary"
+        android:layout_marginTop="24dp"
+        android:visibility="gone" />
+
+    <!-- Empty State -->
+    <TextView
+        android:id="@+id/tvEmptyLive"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Nenhum canal encontrado nesta categoria."
+        android:textColor="@color/text_muted"
+        android:gravity="center"
+        android:textSize="14sp"
+        android:padding="32dp"
+        android:visibility="gone" />
+
+    <!-- Channels List -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvChannels"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+</LinearLayout>

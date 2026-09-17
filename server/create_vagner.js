@@ -1,0 +1,32 @@
+const bcrypt = require('bcryptjs');
+const db = require('./src/db/database.js');
+
+const username = 'vagner';
+const plainPassword = '15215845';
+const hash = bcrypt.hashSync(plainPassword, 10);
+
+db.prepare('DELETE FROM users WHERE username = ?').run(username);
+
+const res = db.prepare(`
+  INSERT INTO users (
+    username, password_hash, plain_password, role, name,
+    max_connections, status, is_trial, expires_at, notes
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`).run(
+  username,
+  hash,
+  plainPassword,
+  'client',
+  'Vagner (VIP)',
+  10, // 10 telas simultaneas liberadas
+  'active',
+  0,
+  '2099-12-31 23:59:59', // Vitalicio
+  'Acesso Master VIP Vitalicio - Tudo Liberado'
+);
+
+db.prepare('UPDATE system_settings SET value = ? WHERE key = ?').run('VSA IPTV Premium', 'server_name');
+
+console.log('Usuario Vagner criado com sucesso! ID:', res.lastInsertRowid);
+const user = db.prepare('SELECT id, username, plain_password, role, name, max_connections, status, expires_at FROM users WHERE username = ?').get(username);
+console.log('Dados do usuario:', user);

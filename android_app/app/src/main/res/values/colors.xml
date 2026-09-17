@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- VSAIPTV Ultra-Modern Dark Streaming Palette -->
+    <color name="primary">#6366F1</color>
+    <color name="primary_variant">#4F46E5</color>
+    <color name="primary_light">#818CF8</color>
+    
+    <color name="secondary">#06B6D4</color>
+    <color name="secondary_variant">#0891B2</color>
+    
+    <!-- Backgrounds (Deep Obsidian) -->
+    <color name="bg_main">#080B11</color>
+    <color name="bg_card">#111625</color>
+    <color name="bg_card_focused">#1E273E</color>
+    <color name="bg_card_surface">#161D2F</color>
+    <color name="bg_input">#0D121F</color>
+    
+    <!-- Borders & Focus Glowing Ring for TV -->
+    <color name="border_color">#1F293D</color>
+    <color name="border_subtle">#162032</color>
+    <color name="focus_outline">#6366F1</color>
+    <color name="focus_glow">#38BDF8</color>
+    
+    <!-- Typography -->
+    <color name="text_primary">#F8FAFC</color>
+    <color name="text_secondary">#94A3B8</color>
+    <color name="text_muted">#64748B</color>
+    <color name="text_accent">#38BDF8</color>
+    
+    <!-- Status & Badges -->
+    <color name="status_active">#10B981</color>
+    <color name="status_expired">#EF4444</color>
+    <color name="status_warning">#F59E0B</color>
+    <color name="status_live">#EF4444</color>
+    <color name="status_p2p">#06B6D4</color>
+    
+    <!-- Overlays & Glass -->
+    <color name="black_overlay">#CC000000</color>
+    <color name="glass_card">#1A1E2C</color>
+    <color name="glass_border">#336366F1</color>
+</resources>

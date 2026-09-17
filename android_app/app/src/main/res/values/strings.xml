@@ -1,0 +1,45 @@
+<resources>
+    <string name="app_name">VSAIPTV</string>
+
+    <!-- Login -->
+    <string name="login_title">VSA IPTV</string>
+    <string name="login_subtitle">Plataforma Premium de Streaming &amp; VOD</string>
+    <string name="server_url">URL / DNS do Servidor</string>
+    <string name="username">Usuário</string>
+    <string name="password">Senha</string>
+    <string name="btn_login">CONECTAR</string>
+    <string name="btn_demo">MODO DEMO / TESTE</string>
+    <string name="err_empty_fields">Por favor, preencha todos os campos.</string>
+    <string name="err_auth_failed">Falha na autenticação. Verifique usuário, senha ou status da conta.</string>
+
+    <!-- Home Navigation -->
+    <string name="nav_home">Início</string>
+    <string name="nav_live">Canais Ao Vivo</string>
+    <string name="nav_vod">Filmes</string>
+    <string name="nav_series">Séries</string>
+    <string name="nav_favorites">Favoritos</string>
+    <string name="nav_epg">Guia EPG</string>
+    <string name="nav_search">Buscar</string>
+    <string name="nav_settings">Ajustes</string>
+    <string name="nav_profile">Minha Conta</string>
+
+    <!-- Status -->
+    <string name="status_active">Plano Ativo</string>
+    <string name="status_expired">Assinatura Expirada</string>
+    <string name="expires_on">Válido até: %1$s</string>
+    <string name="screens_info">Telas: %1$s / %2$s permitidas</string>
+
+    <!-- Content -->
+    <string name="watch_now">Assistir</string>
+    <string name="add_favorite">Favoritar</string>
+    <string name="remove_favorite">Remover Favorito</string>
+    <string name="search_hint">Buscar canais, filmes ou séries...</string>
+
+    <!-- Settings & Parental -->
+    <string name="parental_control">Controle Parental</string>
+    <string name="parental_prompt">Digite seu PIN de 4 dígitos para acessar:</string>
+    <string name="clear_cache">Limpar Cache</string>
+    <string name="legal_notice">Aviso Legal &amp; Termos</string>
+    <string name="legal_text">Este aplicativo é destinado exclusivamente à reprodução de conteúdo próprio, licenciado ou autorizado. Não nos responsabilizamos pelo fornecimento de fontes de transmissão de terceiros sem autorização.</string>
+    <string name="logout">Sair da Conta</string>
+</resources>

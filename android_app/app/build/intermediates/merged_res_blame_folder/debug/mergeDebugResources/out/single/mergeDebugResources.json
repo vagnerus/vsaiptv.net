@@ -1,0 +1,86 @@
+[
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\drawable_bg_badge_live.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\drawable\\bg_badge_live.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_item_category.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\item_category.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\drawable_bg_card_selector.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\drawable\\bg_card_selector.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_activity_main.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\activity_main.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\drawable_ic_launcher.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\drawable\\ic_launcher.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_item_channel.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\item_channel.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_fragment_profile.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\fragment_profile.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_fragment_settings.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\fragment_settings.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_fragment_vod.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\fragment_vod.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_activity_login.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\activity_login.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_fragment_live_tv.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\fragment_live_tv.xml"
+    },
+    {
+        "merged": "com.nexus.iptv.app-debug-35:/layout_activity_login.xml.flat",
+        "source": "com.nexus.iptv.app-main-37:/layout/activity_login.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\drawable_bg_input.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\drawable\\bg_input.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_fragment_favorites.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\fragment_favorites.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_fragment_home.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\fragment_home.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_item_vod_card.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\item_vod_card.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_fragment_series.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\fragment_series.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\drawable_bg_pill_category.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\drawable\\bg_pill_category.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_activity_player.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\activity_player.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\layout_fragment_search.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\layout\\fragment_search.xml"
+    },
+    {
+        "merged": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-debug-35:\\drawable_bg_btn_primary.xml.flat",
+        "source": "C:\\Users\\Vagner\\.gradle\\daemon\\8.7\\com.nexus.iptv.app-main-37:\\drawable\\bg_btn_primary.xml"
+    }
+]

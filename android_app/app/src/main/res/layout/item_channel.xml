@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/bg_card_selector"
+    android:padding="12dp"
+    android:layout_marginBottom="8dp"
+    android:focusable="true">
+
+    <!-- Logo / Poster Container -->
+    <FrameLayout
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:background="@drawable/bg_input">
+
+        <TextView
+            android:id="@+id/tvLogoPlaceholder"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:text="TV"
+            android:textColor="@color/secondary"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:textSize="14sp" />
+
+        <ImageView
+            android:id="@+id/ivChannelLogo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitCenter"
+            android:padding="4dp"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <!-- Channel Info -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginStart="14dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tvChannelName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Nome do Canal"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="AO VIVO"
+                android:textColor="#FFFFFF"
+                android:textSize="9sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_badge_live"
+                android:paddingStart="5dp"
+                android:paddingEnd="5dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvCurrentProgram"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="No Ar: Programação Digital HD"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:layout_marginTop="3dp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/tvNextProgram"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Transmissão P2P Otimizada"
+            android:textColor="@color/text_muted"
+            android:textSize="10sp"
+            android:layout_marginTop="1dp"
+            android:maxLines="1" />
+    </LinearLayout>
+
+    <!-- Favorite Star Button -->
+    <TextView
+        android:id="@+id/tvFavoriteStar"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:gravity="center"
+        android:text="☆"
+        android:textColor="@color/status_warning"
+        android:textSize="22sp"
+        android:focusable="false"
+        android:layout_marginEnd="8dp" />
+
+    <!-- Play Action Button -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_btn_primary"
+        android:text="Assistir"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp" />
+
+</LinearLayout>
