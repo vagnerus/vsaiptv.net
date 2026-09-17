@@ -34,7 +34,7 @@ export default function SearchView({
     setIsLoading(true);
 
     const typeParam = activeFilter !== 'all' ? `&type=${activeFilter}` : '';
-    api.get(`/api/client/streams?search=${encodeURIComponent(debouncedQuery.trim())}${typeParam}`)
+    api.get(`/api/client/search?q=${encodeURIComponent(debouncedQuery.trim())}${typeParam}&limit=50`)
       .then((res) => {
         if (isMounted) setResults(res.data || []);
       })

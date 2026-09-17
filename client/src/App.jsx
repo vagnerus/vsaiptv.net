@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import Navbar from './components/Navbar';
 import LoginView from './views/LoginView';
-import MasterDashboard from './views/MasterDashboard';
-import ResellerDashboard from './views/ResellerDashboard';
-import ClientWebPlayer from './views/ClientWebPlayer';
 import { ProgressProvider } from './hooks/useProgress';
 import { FavoritesProvider } from './hooks/useFavorites';
 import api from './services/api';
+
+const MasterDashboard = lazy(() => import('./views/MasterDashboard'));
+const ResellerDashboard = lazy(() => import('./views/ResellerDashboard'));
+const ClientWebPlayer = lazy(() => import('./views/ClientWebPlayer'));
 
 export default function App() {
   const [user, setUser] = useState(() => {
@@ -67,7 +68,7 @@ export default function App() {
             animation: 'spinSlow 0.8s linear infinite',
             margin: '0 auto 16px auto',
           }} />
-          <p style={{ fontSize: '0.9rem', color: '#94a3b8' }}>Iniciando Sistema IPTV Nexus...</p>
+          <p style={{ fontSize: '0.9rem', color: '#94a3b8' }}>Iniciando VSAIPTV...</p>
         </div>
       </div>
     );
@@ -88,15 +89,27 @@ export default function App() {
             onTabChange={setClientTab} 
           />
           <main>
-            {user.role === 'master' && <MasterDashboard user={user} />}
-            {user.role === 'reseller' && <ResellerDashboard user={user} />}
-            {user.role === 'client' && (
-              <ClientWebPlayer 
-                user={user} 
-                activeTab={clientTab} 
-                onTabChange={setClientTab} 
-              />
-            )}
+            <Suspense fallback={
+              <div style={{
+                minHeight: '60vh',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#818cf8',
+              }}>
+                <div className="vp-spinner" style={{ width: '40px', height: '40px' }} />
+              </div>
+            }>
+              {user.role === 'master' && <MasterDashboard user={user} />}
+              {user.role === 'reseller' && <ResellerDashboard user={user} />}
+              {user.role === 'client' && (
+                <ClientWebPlayer 
+                  user={user} 
+                  activeTab={clientTab} 
+                  onTabChange={setClientTab} 
+                />
+              )}
+            </Suspense>
           </main>
         </div>
       </FavoritesProvider>

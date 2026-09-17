@@ -253,7 +253,7 @@ export default function VideoPlayer({
             } else {
               hls.destroy();
               hlsRef.current = null;
-              setErrorMessage('Falha ao conectar com a transmissÃ£o. Verifique sua conexÃ£o ou tente novamente.');
+              setErrorMessage('Falha ao conectar com a transmissão. Verifique sua conexão ou tente novamente.');
               setIsLoading(false);
               if (onError) onError(data.details);
             }
@@ -264,7 +264,7 @@ export default function VideoPlayer({
           default:
             hls.destroy();
             hlsRef.current = null;
-            setErrorMessage('Falha ao conectar com a transmissÃ£o. Verifique sua conexÃ£o ou tente novamente.');
+            setErrorMessage('Falha ao conectar com a transmissão. Verifique sua conexão ou tente novamente.');
             setIsLoading(false);
             if (onError) onError(data.details);
             break;
@@ -280,10 +280,24 @@ export default function VideoPlayer({
     }
 
     return () => {
-      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
       if (hlsRef.current) {
-        hlsRef.current.destroy();
+        try {
+          hlsRef.current.stopLoad();
+          hlsRef.current.detachMedia();
+          hlsRef.current.destroy();
+        } catch (e) {}
         hlsRef.current = null;
+      }
+      if (video) {
+        try {
+          video.pause();
+          video.removeAttribute('src');
+          video.load();
+        } catch (e) {}
       }
     };
   }, [proxiedUrl, type, autoPlay]);
@@ -299,17 +313,27 @@ export default function VideoPlayer({
       try {
         if (time && time > 0) {
           video.currentTime = time;
+          setCurrentTime(time);
         }
       } catch (e) { /* ignore */ }
     };
 
     // 1. Se passou initialSeekTime explicitamente (ex: do card Continue Assistindo)
     if (initialSeekTime && initialSeekTime > 0) {
-      if (video.readyState >= 1) {
-        applySeek(initialSeekTime);
-      } else {
-        video.addEventListener('loadedmetadata', () => applySeek(initialSeekTime), { once: true });
+      let applied = false;
+      const doSeek = () => {
+        if (!applied) {
+          applySeek(initialSeekTime);
+          applied = true;
+        }
+      };
+
+      if (video.readyState >= 2) {
+        doSeek();
       }
+      video.addEventListener('loadedmetadata', doSeek, { once: true });
+      video.addEventListener('canplay', doSeek, { once: true });
+      video.addEventListener('playing', doSeek, { once: true });
       return;
     }
 

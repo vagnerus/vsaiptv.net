@@ -149,6 +149,14 @@ function initSchema() {
       key TEXT PRIMARY KEY,
       value TEXT
     );
+
+    -- Performance Indexes for 15k+ streams and 155k+ episodes
+    CREATE INDEX IF NOT EXISTS idx_streams_type_status ON streams(type, status);
+    CREATE INDEX IF NOT EXISTS idx_streams_category ON streams(category_id);
+    CREATE INDEX IF NOT EXISTS idx_streams_name ON streams(name);
+    CREATE INDEX IF NOT EXISTS idx_episodes_series ON series_episodes(series_id, season_num);
+    CREATE INDEX IF NOT EXISTS idx_user_progress_user ON user_progress(user_id, stream_id);
+    CREATE INDEX IF NOT EXISTS idx_categories_type ON categories(type);
   `);
 
   seedData();
@@ -160,22 +168,26 @@ function seedData() {
   if (!master) {
     console.log('🌱 Seeding initial system data...');
 
+    const adminPass = process.env.ADMIN_PASSWORD || require('crypto').randomBytes(8).toString('hex');
+    const resellerPass = process.env.RESELLER_PASSWORD || require('crypto').randomBytes(8).toString('hex');
+    const clientPass = process.env.CLIENT_PASSWORD || require('crypto').randomBytes(8).toString('hex');
+
     const salt = bcrypt.genSaltSync(10);
-    const masterHash = bcrypt.hashSync('15215845', salt);
-    const resellerHash = bcrypt.hashSync('revenda123', salt);
-    const clientHash = bcrypt.hashSync('cliente123', salt);
+    const masterHash = bcrypt.hashSync(adminPass, salt);
+    const resellerHash = bcrypt.hashSync(resellerPass, salt);
+    const clientHash = bcrypt.hashSync(clientPass, salt);
 
     // 1. Master Admin
     db.prepare(`
       INSERT INTO users (username, password_hash, plain_password, role, name, email, phone, credits, max_connections, status)
       VALUES (?, ?, ?, 'master', 'Vagner', 'vagner@vsai.com.br', '+5511999999999', 99999, 100, 'active')
-    `).run('vagner', masterHash, '15215845');
+    `).run('vagner', masterHash, adminPass);
 
     // 2. Demo Reseller
     const resellerResult = db.prepare(`
       INSERT INTO users (username, password_hash, plain_password, role, name, email, phone, credits, max_connections, status)
       VALUES (?, ?, ?, 'reseller', 'Revenda Prime Oficial', 'revenda1@iptv-system.local', '+5511988888888', 50.0, 5, 'active')
-    `).run('revenda1', resellerHash, 'revenda123');
+    `).run('revenda1', resellerHash, resellerPass);
 
     const resellerId = resellerResult.lastInsertRowid;
 
@@ -192,7 +204,7 @@ function seedData() {
     db.prepare(`
       INSERT INTO users (username, password_hash, plain_password, role, name, email, phone, reseller_id, max_connections, status, expires_at)
       VALUES (?, ?, ?, 'client', 'João Silva (Cliente)', 'joao@gmail.com', '+5511977777777', ?, 2, 'active', ?)
-    `).run('joaosilva', clientHash, 'cliente123', resellerId, nextMonth.toISOString());
+    `).run('joaosilva', clientHash, clientPass, resellerId, nextMonth.toISOString());
 
     // 4. Default Categories
     const insertCat = db.prepare("INSERT INTO categories (name, type, order_num) VALUES (?, ?, ?)");

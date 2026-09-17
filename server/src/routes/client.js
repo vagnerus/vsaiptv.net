@@ -48,9 +48,77 @@ router.get('/categories', (req, res) => {
   res.json(categories);
 });
 
+// In-memory cache for series episode counts
+let cachedSeriesCounts = null;
+let lastSeriesCountTime = 0;
+const SERIES_COUNT_TTL = 5 * 60 * 1000; // 5 minutos
+
+function getSeriesCountsMap() {
+  const now = Date.now();
+  if (cachedSeriesCounts && (now - lastSeriesCountTime) < SERIES_COUNT_TTL) {
+    return cachedSeriesCounts;
+  }
+  const counts = db.prepare(`
+    SELECT series_id, COUNT(*) as episode_count, COUNT(DISTINCT season_num) as season_count
+    FROM series_episodes
+    GROUP BY series_id
+  `).all();
+  const countMap = {};
+  counts.forEach((c) => { countMap[c.series_id] = c; });
+  cachedSeriesCounts = countMap;
+  lastSeriesCountTime = now;
+  return countMap;
+}
+
+// Fast server-side search across all media types
+router.get('/search', (req, res) => {
+  const { q, type, limit = 40 } = req.query;
+  if (!q || !q.trim()) {
+    return res.json([]);
+  }
+  const maxLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 40));
+  const searchTerm = `%${q.trim()}%`;
+  
+  let query = `
+    SELECT s.id, s.name, s.type, s.category_id, s.poster_url, s.icon_url, s.rating, s.release_date,
+           c.name as category_name
+    FROM streams s
+    LEFT JOIN categories c ON s.category_id = c.id
+    WHERE s.status = 'online' AND s.name LIKE ?
+  `;
+  const params = [searchTerm];
+
+  if (type && ['live', 'movie', 'series'].includes(type)) {
+    query += ' AND s.type = ?';
+    params.push(type);
+  }
+
+  query += ' ORDER BY s.name ASC LIMIT ?';
+  params.push(maxLimit);
+
+  let results = db.prepare(query).all(...params);
+
+  const hasSeries = results.some(r => r.type === 'series');
+  if (hasSeries) {
+    const countMap = getSeriesCountsMap();
+    results = results.map(s => {
+      if (s.type === 'series') {
+        return {
+          ...s,
+          episode_count: countMap[s.id]?.episode_count || 0,
+          season_count: countMap[s.id]?.season_count || 0,
+        };
+      }
+      return s;
+    });
+  }
+
+  res.json(results);
+});
+
 // Streams list
 router.get('/streams', (req, res) => {
-  const { type, category_id, search } = req.query;
+  const { type, category_id, search, page, limit } = req.query;
   let query = 'SELECT s.*, c.name as category_name FROM streams s LEFT JOIN categories c ON s.category_id = c.id WHERE s.status = \'online\'';
   const params = [];
 
@@ -73,17 +141,20 @@ router.get('/streams', (req, res) => {
   }
 
   query += ' ORDER BY s.id ASC';
+
+  const pageNum = parseInt(page, 10) || 1;
+  const limitNum = parseInt(limit, 10);
+  if (!isNaN(limitNum) && limitNum > 0) {
+    const offset = Math.max(0, (pageNum - 1) * limitNum);
+    query += ' LIMIT ? OFFSET ?';
+    params.push(limitNum, offset);
+  }
+
   let streams = db.prepare(query).all(...params);
 
-  // Contagem de episódios/temporadas para séries e novelas (exibida nos cards)
+  // Contagem de episódios/temporadas para séries e novelas (usando cache indexado)
   if (type === 'series' || type === 'novelas') {
-    const counts = db.prepare(`
-      SELECT series_id, COUNT(*) as episode_count, COUNT(DISTINCT season_num) as season_count
-      FROM series_episodes
-      GROUP BY series_id
-    `).all();
-    const countMap = {};
-    counts.forEach((c) => { countMap[c.series_id] = c; });
+    const countMap = getSeriesCountsMap();
     streams = streams.map((s) => ({
       ...s,
       episode_count: countMap[s.id] ? countMap[s.id].episode_count : 0,

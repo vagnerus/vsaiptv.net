@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import HeroBanner from '../components/HeroBanner';
 import ContentRow from '../components/ContentRow';
-import { Tv, Film, Clapperboard, Layers, History, Star, Flame, Sparkles } from 'lucide-react';
+import { Tv, Film, Clapperboard, Layers, History, Star, Flame, Sparkles, Play } from 'lucide-react';
 import { useFavorites } from '../hooks/useFavorites';
 import { getPlayableUrl } from '../utils/streamUtils';
 
@@ -30,6 +30,13 @@ export default function HomeView({
     });
   }, [continueWatching]);
 
+  const formatProgressTime = (secs) => {
+    if (!secs || isNaN(secs)) return '0:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
   return (
     <div className="home-view-container animate-fade">
       {/* 1. Cinematic Hero Banner */}
@@ -41,7 +48,7 @@ export default function HomeView({
 
       {/* 2. Continuar Assistindo Rail (se houver histórico com progresso real não concluído) */}
       {validContinueItems.length > 0 && (
-        <section className="vsa-content-row" style={{ marginTop: '20px' }}>
+        <section className="vsa-content-row continue-watching-section">
           <div className="vsa-row-header">
             <div className="vsa-row-title-group">
               <History size={20} color="#818cf8" />
@@ -57,10 +64,11 @@ export default function HomeView({
                   <div
                     key={`${p.stream_id}-${p.episode_id || 'm'}`}
                     className="continue-card"
+                    title={`Continuar ${p.stream_name} de onde parou (${formatProgressTime(p.progress_time)})`}
                     onClick={() => {
                       if (p.type === 'series' && p.episode_id) {
                         onPlayDirect?.(
-                          { id: p.stream_id, name: p.stream_name, type: 'series', poster_url: p.poster_url },
+                          { id: p.stream_id, name: p.stream_name, type: 'series', poster_url: p.poster_url, backdrop_url: p.backdrop_url },
                           { id: p.episode_id, season_num: p.season_num, episode_num: p.episode_num, title: p.episode_title },
                           p.progress_time
                         );
@@ -68,7 +76,7 @@ export default function HomeView({
                         onOpenDetails?.({ id: p.stream_id, name: p.stream_name, poster_url: p.poster_url, type: 'series' });
                       } else {
                         onPlayDirect?.(
-                          { id: p.stream_id, name: p.stream_name, type: 'movie', poster_url: p.poster_url },
+                          { id: p.stream_id, name: p.stream_name, type: 'movie', poster_url: p.poster_url, backdrop_url: p.backdrop_url },
                           null,
                           p.progress_time
                         );
@@ -77,24 +85,31 @@ export default function HomeView({
                   >
                     <div className="continue-thumb">
                       <img
-                        src={p.poster_url || ''}
+                        src={p.poster_url || p.backdrop_url || ''}
                         alt={p.stream_name || ''}
                         loading="lazy"
-                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        onError={(e) => {
+                          e.currentTarget.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="230" height="144" viewBox="0 0 230 144"><rect width="230" height="144" fill="%230c121e"/><text x="50%" y="50%" fill="%2364748b" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle" dy=".3em">VSA IPTV</text></svg>';
+                        }}
                       />
                       <div className="continue-play-overlay">
                         <div className="continue-play-btn" title="Continuar de onde parou">
-                          <History size={18} color="#fff" />
+                          <Play size={22} fill="#fff" color="#fff" style={{ marginLeft: 2 }} />
                         </div>
+                      </div>
+                      <div className="continue-progress-bar">
+                        <div className="continue-progress-fill" style={{ width: `${pct}%` }} />
                       </div>
                     </div>
                     <div className="continue-info">
                       <span className="continue-title" title={p.stream_name}>{p.stream_name}</span>
-                      {p.type === 'series' && p.episode_id && (
-                        <span className="continue-sub">T{p.season_num || 1}:E{p.episode_num} {p.episode_title || ''}</span>
-                      )}
-                      <div className="continue-progress-bar">
-                        <div className="continue-progress-fill" style={{ width: `${pct}%` }} />
+                      <div className="continue-sub">
+                        {p.type === 'series' && p.episode_id ? (
+                          <span>T{p.season_num || 1}:E{p.episode_num} {p.episode_title ? `• ${p.episode_title}` : ''}</span>
+                        ) : (
+                          <span>{pct}% assistido</span>
+                        )}
+                        <span className="continue-time-tag">{formatProgressTime(p.progress_time)}</span>
                       </div>
                     </div>
                   </div>

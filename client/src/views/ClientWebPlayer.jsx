@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import api from '../services/api';
 import VideoPlayer from '../components/VideoPlayer';
 import BottomNav from '../components/BottomNav';
 import DetailModal from '../components/DetailModal';
 import HomeView from './HomeView';
-import LiveTvView from './LiveTvView';
-import VodGridView from './VodGridView';
-import FavoritesView from './FavoritesView';
-import SearchView from './SearchView';
+
+// Code Splitting (Lazy Loading) para visões pesadas de catálogo
+const LiveTvView = lazy(() => import('./LiveTvView'));
+const VodGridView = lazy(() => import('./VodGridView'));
+const FavoritesView = lazy(() => import('./FavoritesView'));
+const SearchView = lazy(() => import('./SearchView'));
 import { getPlayableUrl, getImageUrl, getPlaceholder, onImageError, getSubtitles } from '../utils/streamUtils';
 import { useProgress } from '../hooks/useProgress';
 import { Radio, X, Play, Tv } from 'lucide-react';
@@ -54,15 +56,44 @@ export default function ClientWebPlayer({
   // Progress hook
   const { continueWatching, isEpisodeWatched, refreshProgress } = useProgress();
 
-  // Scroll suave até o player
+  // Scroll restoration per tab
+  const scrollPositionsRef = useRef({});
+
+  useEffect(() => {
+    const handleScroll = () => {
+      scrollPositionsRef.current[activeTab] = window.scrollY;
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [activeTab]);
+
+  useEffect(() => {
+    const savedY = scrollPositionsRef.current[activeTab] || 0;
+    window.scrollTo({ top: savedY, behavior: 'instant' });
+  }, [activeTab]);
+
+  // Scroll suave até o player no topo da tela
   const scrollToPlayer = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
     setTimeout(() => {
       const stage = document.querySelector('.vsa-player-stage');
       if (stage) {
         stage.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
-    }, 80);
+    }, 120);
   };
+
+  // Garante subida até o player sempre que um vídeo for iniciado
+  useEffect(() => {
+    if (playbackSourceUrl) {
+      scrollToPlayer();
+    }
+  }, [playbackSourceUrl]);
 
   // Carrega conteúdo inicial essencial (Canais e Filmes para a Home)
   useEffect(() => {
@@ -173,33 +204,42 @@ export default function ClientWebPlayer({
       setSessionToken(sessionTok);
       setCurrentProgram(res.data.currentProgram || null);
 
+      const serverStream = res.data.stream || stream;
+      const fullStream = { ...stream, ...serverStream };
+
       if (episode) {
-        // Reproduzindo episódio específico
-        const epUrl = getPlayableUrl(episode);
+        // Reproduzindo episódio específico (mescla com dados completos dos episódios retornados pelo server)
+        let fullEpisode = episode;
+        if (res.data.episodes && res.data.episodes.length > 0) {
+          const found = res.data.episodes.find((e) => String(e.id) === String(episode.id));
+          if (found) fullEpisode = { ...episode, ...found };
+        }
+        const epUrl = getPlayableUrl(fullEpisode);
         setPlaybackSourceUrl(epUrl);
-        const epLabel = stream.category_name?.toLowerCase().includes('novela') 
-          ? `Capítulo ${episode.episode_num}` 
-          : `T${episode.season_num || 1}:E${episode.episode_num}`;
-        setPlaybackTitle(`${stream.name} • ${epLabel} - ${episode.title || ''}`);
+        const epLabel = fullStream.category_name?.toLowerCase().includes('novela') 
+          ? `Capítulo ${fullEpisode.episode_num}` 
+          : `T${fullEpisode.season_num || 1}:E${fullEpisode.episode_num}`;
+        setPlaybackTitle(`${fullStream.name} • ${epLabel} - ${fullEpisode.title || ''}`);
         setPlaybackType('episode');
-        setPlaybackPoster(getImageUrl(stream));
+        setPlaybackPoster(getImageUrl(fullStream));
         setPlaybackSubtitles([
-          ...getSubtitles(episode),
-          ...getSubtitles(stream),
+          ...getSubtitles(fullEpisode),
+          ...getSubtitles(fullStream),
         ]);
-        setActiveStream({ ...stream, playingEpisodeId: episode.id });
+        setActiveStream({ ...fullStream, playingEpisodeId: fullEpisode.id });
       } else {
         // Reproduzindo canal ao vivo ou filme VOD
-        const streamUrl = getPlayableUrl(stream);
+        const streamUrl = getPlayableUrl(fullStream);
         setPlaybackSourceUrl(streamUrl);
-        setPlaybackTitle(stream.name);
-        setPlaybackType(stream.type || 'live');
-        setPlaybackPoster(getImageUrl(stream));
-        setPlaybackSubtitles(getSubtitles(stream));
-        setActiveStream(stream);
+        setPlaybackTitle(fullStream.name);
+        setPlaybackType(fullStream.type || 'live');
+        setPlaybackPoster(getImageUrl(fullStream));
+        setPlaybackSubtitles(getSubtitles(fullStream));
+        setActiveStream(fullStream);
       }
 
-      setupP2PTracker(stream.id);
+      setupP2PTracker(fullStream.id);
+      scrollToPlayer();
     } catch (err) {
       console.error('Playback setup error:', err);
       // Fallback: tenta URL direta se a API falhou
@@ -209,6 +249,7 @@ export default function ClientWebPlayer({
         setPlaybackTitle(episode ? `${stream.name} - Ep. ${episode.episode_num}` : stream.name);
         setPlaybackType(stream.type || 'live');
         setActiveStream(stream);
+        scrollToPlayer();
       }
     }
   };
@@ -401,66 +442,81 @@ export default function ClientWebPlayer({
 
       {/* PRINCIPAL: RENDERIZAÇÃO DA VISÃO CONFORME ABA ATIVA */}
       <main style={{ flex: 1 }}>
-        {activeTab === 'home' && (
-          <HomeView
-            featuredList={featuredList}
-            liveChannels={liveChannels}
-            featuredMovies={movies}
-            featuredSeries={series}
-            novelas={novelas}
-            continueWatching={continueWatching}
-            onItemClick={handleItemClick}
-            onPlayDirect={(item, ep, seek) => startPlayback(item, ep, seek)}
-            onOpenDetails={(item) => setDetailModalItem(item)}
-            onNavigateTab={onTabChange}
-            activeStreamId={activeStream?.id}
-          />
-        )}
+        <Suspense fallback={
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '400px',
+            gap: '12px',
+            color: 'var(--text-muted, #94a3b8)',
+          }}>
+            <div className="vp-spinner" style={{ width: '40px', height: '40px' }} />
+            <span style={{ fontSize: '0.88rem' }}>Carregando catálogo...</span>
+          </div>
+        }>
+          {activeTab === 'home' && (
+            <HomeView
+              featuredList={featuredList}
+              liveChannels={liveChannels}
+              featuredMovies={movies}
+              featuredSeries={series}
+              novelas={novelas}
+              continueWatching={continueWatching}
+              onItemClick={handleItemClick}
+              onPlayDirect={(item, ep, seek) => startPlayback(item, ep, seek)}
+              onOpenDetails={(item) => setDetailModalItem(item)}
+              onNavigateTab={onTabChange}
+              activeStreamId={activeStream?.id}
+            />
+          )}
 
-        {activeTab === 'live' && (
-          <LiveTvView
-            channels={liveChannels}
-            categories={categories}
-            selectedCategory={liveCategory}
-            onSelectCategory={setLiveCategory}
-            onPlayChannel={(ch) => startPlayback(ch)}
-            activeStreamId={activeStream?.id}
-            isLoading={isLoading}
-            searchQuery={liveSearchQuery}
-            onSearchChange={setLiveSearchQuery}
-          />
-        )}
+          {activeTab === 'live' && (
+            <LiveTvView
+              channels={liveChannels}
+              categories={categories}
+              selectedCategory={liveCategory}
+              onSelectCategory={setLiveCategory}
+              onPlayChannel={(ch) => startPlayback(ch)}
+              activeStreamId={activeStream?.id}
+              isLoading={isLoading}
+              searchQuery={liveSearchQuery}
+              onSearchChange={setLiveSearchQuery}
+            />
+          )}
 
-        {(activeTab === 'movie' || activeTab === 'series' || activeTab === 'novelas') && (
-          <VodGridView
-            type={activeTab}
-            items={activeTab === 'movie' ? movies : activeTab === 'series' ? series : novelas}
-            categories={categories}
-            selectedCategory={selectedCategory}
-            onSelectCategory={setSelectedCategory}
-            onItemClick={handleItemClick}
-            onPlayDirect={(item) => startPlayback(item)}
-            activeStreamId={activeStream?.id}
-            isLoading={isLoading}
-          />
-        )}
+          {(activeTab === 'movie' || activeTab === 'series' || activeTab === 'novelas') && (
+            <VodGridView
+              type={activeTab}
+              items={activeTab === 'movie' ? movies : activeTab === 'series' ? series : novelas}
+              categories={categories}
+              selectedCategory={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+              onItemClick={handleItemClick}
+              onPlayDirect={(item) => startPlayback(item)}
+              activeStreamId={activeStream?.id}
+              isLoading={isLoading}
+            />
+          )}
 
-        {activeTab === 'favorites' && (
-          <FavoritesView
-            onItemClick={handleItemClick}
-            onPlayDirect={(item) => startPlayback(item)}
-            onExplore={() => onTabChange('home')}
-            activeStreamId={activeStream?.id}
-          />
-        )}
+          {activeTab === 'favorites' && (
+            <FavoritesView
+              onItemClick={handleItemClick}
+              onPlayDirect={(item) => startPlayback(item)}
+              onExplore={() => onTabChange('home')}
+              activeStreamId={activeStream?.id}
+            />
+          )}
 
-        {activeTab === 'search' && (
-          <SearchView
-            onItemClick={handleItemClick}
-            onPlayDirect={(item) => startPlayback(item)}
-            activeStreamId={activeStream?.id}
-          />
-        )}
+          {activeTab === 'search' && (
+            <SearchView
+              onItemClick={handleItemClick}
+              onPlayDirect={(item) => startPlayback(item)}
+              activeStreamId={activeStream?.id}
+            />
+          )}
+        </Suspense>
       </main>
 
       {/* DETAIL MODAL (Filmes, Séries & Novelas) */}

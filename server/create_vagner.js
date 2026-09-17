@@ -1,8 +1,11 @@
 const bcrypt = require('bcryptjs');
 const db = require('./src/db/database.js');
 
-const username = 'vagner';
-const plainPassword = '15215845';
+const plainPassword = process.env.CLIENT_PASSWORD || process.env.ADMIN_PASSWORD;
+if (!plainPassword) {
+  console.error('ERRO: Defina a variável CLIENT_PASSWORD ou ADMIN_PASSWORD antes de executar este script.');
+  process.exit(1);
+}
 const hash = bcrypt.hashSync(plainPassword, 10);
 
 db.prepare('DELETE FROM users WHERE username = ?').run(username);
@@ -27,6 +30,6 @@ const res = db.prepare(`
 
 db.prepare('UPDATE system_settings SET value = ? WHERE key = ?').run('VSA IPTV Premium', 'server_name');
 
-console.log('Usuario Vagner criado com sucesso! ID:', res.lastInsertRowid);
-const user = db.prepare('SELECT id, username, plain_password, role, name, max_connections, status, expires_at FROM users WHERE username = ?').get(username);
+console.log('Usuario Vagner configurado com sucesso! ID:', res.lastInsertRowid);
+const user = db.prepare('SELECT id, username, role, name, max_connections, status, expires_at FROM users WHERE username = ?').get(username);
 console.log('Dados do usuario:', user);
