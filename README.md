@@ -4,6 +4,47 @@ Sistema completo de distribuição e gerenciamento de IPTV/OTT e P2P com arquite
 
 O sistema destina-se exclusivamente à distribuição de conteúdo legal, próprio ou licenciado.
 
+## Expansão do catálogo para 30 mil — 17/09/2026
+
+O banco local foi ampliado de 15.759 para **30.000 registros publicados**:
+5.900 canais, 14.000 filmes e 10.100 séries, com 181.422 episódios contabilizados separadamente.
+Foram adicionados 14.241 títulos/canais e 25.446 episódios das playlists locais.
+As fontes remotas não foram necessárias nesta execução.
+
+**Importante:** o status `online` significa publicação no catálogo, não reprodução comprovada.
+Na amostra aleatória de 21 itens, 7 filmes e 7 episódios responderam com HTTP 206 e `video/mp4`;
+os 7 canais falharam (401, 404 ou HTML). Não houve teste de decodificação ou reprodução completa,
+nem validação de todos os links. Canais com erro continuam publicados; sua correção permanece pendente.
+Não foram inseridos vídeos substitutos de demonstração. Séries novas têm limite padrão de 30 episódios,
+portanto a importação não garante temporadas completas. Não houve teste visual no Android/Smart TV.
+
+### Comandos (PowerShell)
+
+```powershell
+# Simulação somente leitura
+$env:DRY_RUN='1'
+node 'c:\Users\Vagner\Desktop\IPTV\expand_catalog_30000.js'
+Remove-Item Env:\DRY_RUN
+
+# Importação aditiva, com backup SQLite consistente e deduplicação
+node 'c:\Users\Vagner\Desktop\IPTV\expand_catalog_30000.js'
+
+# Integração em cópia temporária: banco, API cliente, Xtream, M3U e idempotência
+node 'c:\Users\Vagner\Desktop\IPTV\test_catalog_30000.js'
+
+# Diagnóstico externo por amostragem; salva relatório sem URLs/credenciais
+node 'c:\Users\Vagner\Desktop\IPTV\test_catalog_media_sample.js'
+```
+
+`DB_PATH` seleciona outro banco existente para importação; `TEST_SOURCE_DB` seleciona a origem
+que a suíte copia, permitindo repetir a importação desde um backup anterior.
+Backup desta execução:
+`c:\Users\Vagner\Desktop\IPTV\server\data\iptv.db.before_catalog_30000.1789653855461`.
+Relatório de amostragem: `c:\Users\Vagner\Desktop\IPTV\catalog_media_sample.json`.
+O teste de integração não inicia o scheduler nem altera usuários/sessões do banco principal.
+Gzip não foi implementado nesta etapa. Use apenas fontes cuja distribuição esteja autorizada.
+
+
 ---
 
 ## 📱 1. Aplicativo Android (APK Pronto para Instalação)
@@ -68,7 +109,7 @@ O backend foi desenvolvido em **Node.js + Express** com persistência em **SQLit
 - 🌐 **Painel Web (Vite + React):** Integrado e servido diretamente pelo backend em `http://localhost:5000` ou rodando em modo dev na porta `3000`.
 
 ### Níveis de Acesso:
-1. **👑 Administrador Master (`admin` / `admin123`):**
+1. **👑 Administrador Master (`vagner`):**
    - Monitoramento em tempo real: Conexões simultâneas, consumo de banda (Mbps), porcentagem de economia P2P Mesh, CPU e RAM.
    - Gestão de Revendedores: Criar revenda, adicionar/debitar créditos com histórico de auditoria, suspender e excluir.
    - Catálogo & Importador: Criar canais, filmes e séries, e **Importar Playlists M3U em Lote** via texto.
@@ -156,3 +197,5 @@ O APK final é gerado em `android_app/app/build/outputs/apk/debug/app-debug.apk`
 - Streams servidos apenas mediante autorização por sessão ou credenciais válidas.
 
 | **P2P WebSocket Tracker** | `ws://localhost:5000/tracker` |
+
+# vsaiptv.net

@@ -28,6 +28,16 @@ pnpm-debug.log*
 *.db-shm
 server/data/*.db*
 
+# Large playlists, apk and dumps
+*.m3u
+*.m3u8
+*.apk
+list/
+repo_content/
+server/data/images/
+server/storage/images/
+server/data/backups/
+
 # IDE & OS
 .vscode/
 .idea/
