@@ -522,11 +522,13 @@
   }
 }
 
-.media-card-vod:hover {
-  transform: translateY(-6px) scale(1.03);
-  border-color: rgba(99, 102, 241, 0.5);
-  box-shadow: 0 14px 30px -5px rgba(0, 0, 0, 0.8), 0 0 20px rgba(99, 102, 241, 0.25);
-  z-index: 5;
+.media-card-vod:hover,
+.media-card-vod:focus-visible {
+  transform: translateY(-6px) scale(1.04);
+  border-color: #818cf8;
+  box-shadow: 0 14px 30px -5px rgba(0, 0, 0, 0.9), 0 0 0 3px #6366f1, 0 0 25px rgba(99, 102, 241, 0.45);
+  outline: none;
+  z-index: 10;
 }
 
 .media-card-poster-wrap {
@@ -545,7 +547,8 @@
   transition: transform 0.4s ease;
 }
 
-.media-card-vod:hover .media-card-poster-img {
+.media-card-vod:hover .media-card-poster-img,
+.media-card-vod:focus-visible .media-card-poster-img {
   transform: scale(1.06);
 }
 
@@ -571,10 +574,13 @@
   }
 }
 
-.media-card-live:hover {
-  transform: translateY(-4px) scale(1.02);
-  border-color: rgba(6, 182, 212, 0.5);
-  box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.7), 0 0 18px rgba(6, 182, 212, 0.25);
+.media-card-live:hover,
+.media-card-live:focus-visible {
+  transform: translateY(-4px) scale(1.04);
+  border-color: #38bdf8;
+  box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.9), 0 0 0 3px #0ea5e9, 0 0 22px rgba(14, 165, 233, 0.45);
+  outline: none;
+  z-index: 10;
 }
 
 .media-card-live-thumb {
@@ -873,6 +879,56 @@
   padding: 1px 6px;
   border-radius: 4px;
 }
+
+.continue-time-rem {
+  color: #38bdf8;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.continue-card:focus-visible,
+.continue-card[data-focused="true"] {
+  outline: none;
+  transform: translateY(-5px) scale(1.04);
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.4), 0 12px 30px rgba(0, 0, 0, 0.85);
+  z-index: 10;
+}
+
+.continue-remove-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 5;
+  opacity: 0;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.continue-card:hover .continue-remove-btn,
+.continue-card:focus-within .continue-remove-btn,
+.continue-remove-btn:focus {
+  opacity: 1;
+}
+
+.continue-remove-btn:hover,
+.continue-remove-btn:focus-visible {
+  background: #ef4444;
+  color: #fff;
+  border-color: #f87171;
+  transform: scale(1.15);
+  outline: none;
+}
+
 
 /* --------------------------------------------------------------------------
    Cinema Detail Modal (Movies, Series, Novelas)
@@ -1389,4 +1445,175 @@
   font-weight: 600;
   box-shadow: 0 10px 30px rgba(225, 29, 72, 0.4);
   pointer-events: auto;
+}
+/* --------------------------------------------------------------------------
+   Área XXX (conteúdo adulto) — menu, gate de senha e catálogo
+   -------------------------------------------------------------------------- */
+.vsa-nav-btn.vsa-nav-xxx {
+  color: #f9a8d4;
+}
+
+.vsa-nav-btn.vsa-nav-xxx:hover {
+  color: #fff;
+  background: rgba(244, 114, 182, 0.14);
+}
+
+.vsa-nav-btn.vsa-nav-xxx.active {
+  color: #fff;
+  background: rgba(244, 114, 182, 0.2);
+  border: 1px solid rgba(244, 114, 182, 0.45);
+  box-shadow: 0 0 15px rgba(244, 114, 182, 0.25);
+}
+
+.vsa-bottom-item.vsa-bottom-xxx {
+  color: #f472b6;
+}
+
+.vsa-bottom-item.vsa-bottom-xxx.active {
+  color: #fbcfe8;
+}
+
+.vsa-xxx-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.vsa-xxx-badge {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.vsa-xxx-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 16px;
+}
+
+.vsa-xxx-panel {
+  margin: 16px auto 24px;
+  padding: 22px;
+  width: 100%;
+  max-width: 460px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.vsa-xxx-body {
+  padding: 16px;
+}
+
+.vsa-xxx-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.vsa-xxx-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 210px;
+  padding: 0 14px;
+  height: 42px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+}
+
+.vsa-xxx-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.vsa-xxx-count {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.vsa-xxx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.vsa-xxx-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition);
+}
+
+.vsa-xxx-card:hover {
+  border-color: rgba(244, 114, 182, 0.45);
+  transform: translateY(-2px);
+}
+
+.vsa-xxx-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.vsa-xxx-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.vsa-xxx-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vsa-xxx-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vsa-xxx-cat {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

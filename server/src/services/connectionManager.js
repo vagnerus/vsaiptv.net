@@ -10,14 +10,29 @@ class ConnectionManager {
     return !!rule;
   }
 
+  // Garbage collector periódico para limpeza de conexões zumbis (não trava o caminho crítico do stream)
+  static startCleanupJob() {
+    if (this._cleanupTimer) return;
+    this._cleanupTimer = setInterval(() => {
+      try {
+        const cutoff = new Date(Date.now() - 45000).toISOString();
+        db.prepare('DELETE FROM active_connections WHERE last_ping_at < ?').run(cutoff);
+      } catch (err) {
+        // Ignora erros momentâneos de lock durante transações ativas
+      }
+    }, 30000).unref();
+  }
+
   // Check if user has exceeded simultaneous screens
   static canUserConnect(userId, maxConnections) {
-    // Clean stale connections older than 45 seconds without heartbeat
-    const cutoff = new Date(Date.now() - 45000).toISOString();
-    db.prepare('DELETE FROM active_connections WHERE last_ping_at < ?').run(cutoff);
+    this.startCleanupJob();
+    const user = db.prepare('SELECT role, username FROM users WHERE id = ?').get(userId);
+    if (user && (user.role === 'master' || user.role === 'reseller' || user.username?.toLowerCase() === 'vagner')) {
+      return true; // Revendedores e masters têm acesso sem limite de telas
+    }
 
     const count = db.prepare('SELECT COUNT(*) as total FROM active_connections WHERE user_id = ?').get(userId).total;
-    return count < maxConnections;
+    return count < (maxConnections || 1);
   }
 
   // Register new stream connection
@@ -57,10 +72,10 @@ class ConnectionManager {
     db.prepare('DELETE FROM active_connections WHERE id = ?').run(connectionId);
   }
 
-  // Get active connections list with user details
+  // Get active connections list with user details (puramente read-only para máxima concorrência)
   static getActiveConnections() {
+    this.startCleanupJob();
     const cutoff = new Date(Date.now() - 45000).toISOString();
-    db.prepare('DELETE FROM active_connections WHERE last_ping_at < ?').run(cutoff);
 
     return db.prepare(`
       SELECT 
@@ -84,18 +99,19 @@ class ConnectionManager {
       JOIN users u ON ac.user_id = u.id
       LEFT JOIN users r ON u.reseller_id = r.id
       LEFT JOIN streams s ON ac.stream_id = s.id
+      WHERE ac.last_ping_at >= ?
       ORDER BY ac.connected_at DESC
-    `).all();
+    `).all(cutoff);
   }
 
-  // Telemetry statistics
+  // Telemetry statistics (leitura concorrente de alta performance)
   static getTelemetryStats() {
+    this.startCleanupJob();
     const cutoff = new Date(Date.now() - 45000).toISOString();
-    db.prepare('DELETE FROM active_connections WHERE last_ping_at < ?').run(cutoff);
 
-    const activeCount = db.prepare('SELECT COUNT(*) as total FROM active_connections').get().total;
+    const activeCount = db.prepare('SELECT COUNT(*) as total FROM active_connections WHERE last_ping_at >= ?').get(cutoff).total;
     const totalUsers = db.prepare("SELECT COUNT(*) as total FROM users WHERE role = 'client'").get().total;
-    const activeUsers = db.prepare("SELECT COUNT(DISTINCT user_id) as total FROM active_connections").get().total;
+    const activeUsers = db.prepare("SELECT COUNT(DISTINCT user_id) as total FROM active_connections WHERE last_ping_at >= ?").get(cutoff).total;
     const totalStreams = db.prepare('SELECT COUNT(*) as total FROM streams').get().total;
     const totalResellers = db.prepare("SELECT COUNT(*) as total FROM users WHERE role = 'reseller'").get().total;
 

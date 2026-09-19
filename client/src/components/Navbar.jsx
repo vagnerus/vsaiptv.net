@@ -1,19 +1,26 @@
 import React from 'react';
 import { 
   Tv, LogOut, Shield, UserCheck, PlayCircle, 
-  Coins, AlertTriangle, Radio, Home, Film, 
-  Clapperboard, Layers, Star, Search 
+  Coins, AlertTriangle, Home, Film, 
+  Clapperboard, Layers, Star, Search, ShieldOff 
 } from 'lucide-react';
+import { canSeeXxx } from '../utils/xxxAccess';
 
 export default function Navbar({ 
   user, 
   onLogout,
   activeTab = 'home',
   onTabChange,
+  currentView = 'player',
+  onToggleView,
 }) {
   const isMaster = user?.role === 'master';
   const isReseller = user?.role === 'reseller';
   const isClient = user?.role === 'client';
+  const showPlayerTabs = isClient || currentView === 'player';
+
+  // Menu XXX: admin sempre; cliente somente com o pacote liberado na conta
+  const isXxxAllowed = canSeeXxx(user);
 
   const navItems = [
     { id: 'home', label: 'Início', icon: Home },
@@ -22,13 +29,22 @@ export default function Navbar({
     { id: 'series', label: 'Séries', icon: Clapperboard },
     { id: 'novelas', label: 'Novelas', icon: Layers },
     { id: 'favorites', label: 'Favoritos', icon: Star },
+    ...(isXxxAllowed ? [{ id: 'xxx', label: 'XXX', icon: ShieldOff, xxx: true }] : []),
   ];
+
+  // Abre a área XXX (se o admin/revenda estiver no painel, entra no player primeiro)
+  const openXxx = () => {
+    if (!showPlayerTabs && onToggleView) onToggleView('player');
+    onTabChange?.('xxx');
+  };
 
   return (
     <header className="vsa-navbar">
       {/* Left: Brand */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-        <div className="vsa-brand" onClick={() => onTabChange?.('home')}>
+        <div className="vsa-brand" onClick={() => {
+          if (showPlayerTabs) onTabChange?.('home');
+        }}>
           <div className="vsa-brand-logo">
             <Tv size={22} color="#fff" />
           </div>
@@ -37,15 +53,15 @@ export default function Navbar({
               VSA<span>IPTV</span>
             </div>
             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>
-              {isMaster && 'Painel Master'}
-              {isReseller && 'Painel Revenda'}
+              {isMaster && (currentView === 'player' ? 'Master • Assistir WebTV (Sem Limite)' : 'Painel Master')}
+              {isReseller && (currentView === 'player' ? 'Revenda • Assistir WebTV (Sem Limite)' : 'Painel Revenda')}
               {isClient && 'Streaming & OTT Player'}
             </span>
           </div>
         </div>
 
-        {/* Center: Desktop Navigation Tabs for Clients */}
-        {isClient && onTabChange && (
+        {/* Center: Desktop Navigation Tabs when in Player mode */}
+        {showPlayerTabs && onTabChange && (
           <nav className="vsa-nav-links" aria-label="Navegação desktop">
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -53,8 +69,9 @@ export default function Navbar({
               return (
                 <button
                   key={item.id}
-                  className={`vsa-nav-btn ${isActive ? 'active' : ''}`}
-                  onClick={() => onTabChange(item.id)}
+                  className={`vsa-nav-btn ${isActive ? 'active' : ''} ${item.xxx ? 'vsa-nav-xxx' : ''}`}
+                  onClick={() => (item.xxx ? openXxx() : onTabChange(item.id))}
+                  title={item.xxx ? 'Área XXX (conteúdo adulto protegido por senha)' : item.label}
                 >
                   <Icon size={16} />
                   <span>{item.label}</span>
@@ -63,12 +80,66 @@ export default function Navbar({
             })}
           </nav>
         )}
+
+        {/* XXX fora do modo player (Painel Master/Revenda): admin sempre vê */}
+        {isXxxAllowed && !showPlayerTabs && onTabChange && (
+          <button
+            className={`vsa-nav-btn vsa-nav-xxx ${activeTab === 'xxx' ? 'active' : ''}`}
+            onClick={openXxx}
+            title="Abrir a Área XXX (conteúdo adulto)"
+          >
+            <ShieldOff size={16} />
+            <span>XXX</span>
+          </button>
+        )}
       </div>
 
       {/* Right User Info & Actions */}
       <div className="vsa-nav-right">
-        {/* Quick Search Button (Desktop) */}
-        {isClient && onTabChange && (
+        {/* Switch Mode Button for Resellers and Masters */}
+        {(isReseller || isMaster) && onToggleView && (
+          currentView === 'player' ? (
+            <button
+              onClick={() => onToggleView('dashboard')}
+              className="btn btn-secondary btn-sm"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-full)',
+                fontWeight: '600',
+                border: '1px solid rgba(99, 102, 241, 0.4)',
+                background: 'rgba(99, 102, 241, 0.12)'
+              }}
+              title="Voltar para o Painel de Gestão"
+            >
+              <Shield size={15} color="#818cf8" />
+              <span>{isMaster ? 'Painel Master' : 'Painel de Revenda'}</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => onToggleView('player')}
+              className="btn btn-primary btn-sm"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 16px',
+                borderRadius: 'var(--radius-full)',
+                fontWeight: '700',
+                boxShadow: '0 0 15px rgba(99, 102, 241, 0.4)'
+              }}
+              title="Assistir canais, filmes e séries sem limites"
+            >
+              <PlayCircle size={16} />
+              <span>Assistir WebTV (Sem Limite)</span>
+            </button>
+          )
+        )}
+
+        {/* Quick Search Button (Desktop in Player mode) */}
+        {showPlayerTabs && onTabChange && (
           <button
             onClick={() => onTabChange('search')}
             className={`vsa-nav-btn ${activeTab === 'search' ? 'active' : ''}`}

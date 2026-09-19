@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import api from '../services/api';
-import { Tv, Shield, User, Lock, Play, ArrowRight, AlertCircle } from 'lucide-react';
+import { Tv, Shield, User, Lock, Play, ArrowRight, AlertCircle, QrCode } from 'lucide-react';
+import { useTVMode } from '../tv/TVModeContext';
+import TVLoginModal from '../tv/TVLoginModal';
 
 export default function LoginView({ onLoginSuccess }) {
   const [activeTab, setActiveTab] = useState('client'); // default to 'client' for PWA app
@@ -8,6 +10,29 @@ export default function LoginView({ onLoginSuccess }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Mandatory password change state
+  const [mustChangePassword, setMustChangePassword] = useState(() => {
+    try {
+      const saved = localStorage.getItem('iptv_user');
+      const token = localStorage.getItem('iptv_token');
+      if (saved && token) {
+        const u = JSON.parse(saved);
+        return !!u.must_change_password;
+      }
+    } catch (_) {}
+    return false;
+  });
+  const [loggedUser, setLoggedUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('iptv_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (_) {}
+    return null;
+  });
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changeError, setChangeError] = useState('');
 
   const handleLogin = async (e) => {
     e?.preventDefault();
@@ -20,6 +45,13 @@ export default function LoginView({ onLoginSuccess }) {
 
       localStorage.setItem('iptv_token', res.data.token);
       localStorage.setItem('iptv_user', JSON.stringify(res.data.user));
+
+      if (res.data.must_change_password || res.data.user?.must_change_password) {
+        setLoggedUser(res.data.user);
+        setMustChangePassword(true);
+        return;
+      }
+
       onLoginSuccess(res.data.user);
     } catch (err) {
       setError(err.response?.data?.error || 'Falha ao autenticar. Verifique suas credenciais.');
@@ -27,6 +59,38 @@ export default function LoginView({ onLoginSuccess }) {
       setLoading(false);
     }
   };
+
+  const handleChangePassword = async (e) => {
+    e?.preventDefault();
+    setChangeError('');
+
+    if (!newPassword || newPassword.trim().length < 4) {
+      setChangeError('A nova senha deve ter pelo menos 4 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setChangeError('A confirmação da senha não confere.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await api.post('/api/auth/change-password', {
+        new_password: newPassword.trim()
+      });
+
+      const updatedUser = res.data.user || { ...loggedUser, must_change_password: false };
+      localStorage.setItem('iptv_user', JSON.stringify(updatedUser));
+      onLoginSuccess(updatedUser);
+    } catch (err) {
+      setChangeError(err.response?.data?.error || 'Erro ao alterar a senha.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const { isTVMode } = useTVMode();
+  const [showTVPairing, setShowTVPairing] = useState(() => isTVMode);
 
   return (
     <div style={{
@@ -37,7 +101,88 @@ export default function LoginView({ onLoginSuccess }) {
       padding: '24px',
       background: 'radial-gradient(circle at top, #181d2d 0%, #0a0d14 100%)',
     }}>
-      <div className="glass-card animate-fade" style={{ width: '100%', maxWidth: '440px', padding: '36px 32px' }}>
+      {showTVPairing ? (
+        <TVLoginModal
+          onStandardLoginClick={() => setShowTVPairing(false)}
+          onAuthenticated={(user) => onLoginSuccess(user)}
+        />
+      ) : mustChangePassword ? (
+        <div className="glass-card animate-fade" style={{ width: '100%', maxWidth: '440px', padding: '36px 32px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+            <div style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 0 25px rgba(245, 158, 11, 0.4)',
+              marginBottom: '14px',
+            }}>
+              <Lock size={28} color="#fff" />
+            </div>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: '800' }}>Alteração de Senha</h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+              Olá, <strong>{loggedUser?.name || loggedUser?.username}</strong>! Como este é seu primeiro login, por segurança você deve definir sua nova senha.
+            </p>
+          </div>
+
+          {changeError && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: 'var(--radius-md)',
+              color: '#f87171',
+              fontSize: '0.82rem',
+              marginBottom: '20px',
+            }}>
+              <AlertCircle size={16} />
+              <span>{changeError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleChangePassword}>
+            <div className="input-group">
+              <label className="input-label">Nova Senha</label>
+              <input
+                type="password"
+                required
+                className="form-control"
+                placeholder="Mínimo 4 caracteres"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </div>
+
+            <div className="input-group" style={{ marginTop: '16px' }}>
+              <label className="input-label">Confirmar Nova Senha</label>
+              <input
+                type="password"
+                required
+                className="form-control"
+                placeholder="Repita a nova senha"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn btn-primary"
+              style={{ width: '100%', marginTop: '24px', padding: '12px', justifyContent: 'center' }}
+            >
+              {loading ? 'Atualizando...' : 'Definir Senha e Acessar'}
+            </button>
+          </form>
+        </div>
+      ) : (
+        <div className="glass-card animate-fade" style={{ width: '100%', maxWidth: '440px', padding: '36px 32px' }}>
         
         {/* Brand Header */}
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
@@ -182,9 +327,31 @@ export default function LoginView({ onLoginSuccess }) {
               </>
             )}
           </button>
-        </form>
 
+          <button
+            type="button"
+            onClick={() => setShowTVPairing(true)}
+            className="btn"
+            style={{
+              width: '100%',
+              padding: '10px',
+              marginTop: '12px',
+              background: 'rgba(56, 189, 248, 0.08)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              color: '#38bdf8',
+              fontSize: '0.88rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
+          >
+            <QrCode size={16} />
+            <span>Acessar via Smart TV (Código / QR)</span>
+          </button>
+        </form>
       </div>
+      )}
     </div>
   );
 }

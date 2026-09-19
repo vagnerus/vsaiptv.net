@@ -22,10 +22,28 @@ const IMG_FIELDS = [
 
 const INVALID_VALUES = ['', 'null', 'undefined', 'none', '0', 'no-image.png', 'n/a'];
 
+const DEAD_OR_GENERIC_PATTERNS = [
+  'tjtor8411.com',
+  'acstatic.co',
+  'OOjs_UI_icon_play',
+  'unsplash.com/photo-1504208434341',
+  'placeholder',
+];
+
+function isUsableImageUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  const lower = url.toLowerCase();
+  for (const pat of DEAD_OR_GENERIC_PATTERNS) {
+    if (lower.includes(pat.toLowerCase())) return false;
+  }
+  return true;
+}
+
 function isValidImageValue(value) {
   if (!value || typeof value !== 'string') return false;
   const v = value.trim();
   if (!v || INVALID_VALUES.includes(v.toLowerCase())) return false;
+  if (!isUsableImageUrl(v)) return false;
   return true;
 }
 
@@ -41,15 +59,14 @@ function resolveImageUrl(raw) {
 
   if (/^data:image\//i.test(v)) return v;
   if (/^https?:\/\//i.test(v)) return v;
-  if (/^\/\//i.test(v)) return window.location.protocol + v;
-  if (/^\.?\//i.test(v)) return window.location.origin + v;
+  if (/^\/\//i.test(v)) return (typeof window !== 'undefined' ? window.location.protocol : 'https:') + v;
+  if (/^\.?\//i.test(v)) return (typeof window !== 'undefined' ? window.location.origin : '') + v;
   // Bare path like "images/foo.jpg" — treat as relative to API origin
   if (/^[\w\-./]+\.(jpg|jpeg|png|webp|gif|avif|svg)(\?.*)?$/i.test(v)) {
-    return window.location.origin + '/' + v.replace(/^\.?\//, '');
+    return (typeof window !== 'undefined' ? window.location.origin : '') + '/' + v.replace(/^\.?\//, '');
   }
   return '';
 }
-
 
 /**
  * Robust image resolver — searches every common poster/cover field,
@@ -63,14 +80,17 @@ export function getImageUrl(item) {
   
   const isLive = item.type === 'live' || item.stream_type === 'live' || (!item.type && !item.season_count && !item.episode_count);
 
+  // Se for canal ao vivo, busca primeiro no catálogo de logos conhecidos oficiais
+  if (isLive) {
+    const known = getKnownChannelLogo(item.name || item.title);
+    if (known) return proxyImageUrl(known);
+  }
+
   for (const field of IMG_FIELDS) {
     const rawVal = item[field];
-    // Ignora URLs conhecidas por estarem mortas (como unsplash de teste)
-    if (rawVal && typeof rawVal === 'string' && rawVal.includes('unsplash.com/photo-1504208434341')) {
-      continue;
-    }
+    if (!isValidImageValue(rawVal)) continue;
     const url = resolveImageUrl(rawVal);
-    if (url) return proxyImageUrl(url);
+    if (url && isUsableImageUrl(url)) return proxyImageUrl(url);
   }
   
   // Nested objects (e.g. { info: { cover: '...' } })
@@ -82,10 +102,8 @@ export function getImageUrl(item) {
     }
   }
 
-  // Se for canal ao vivo, busca no catálogo de logos conhecidos ou gera insígnia oficial
+  // Fallback para canal ao vivo se não tiver logo oficial nem URL válida da fonte
   if (isLive) {
-    const known = getKnownChannelLogo(item.name || item.title);
-    if (known) return proxyImageUrl(known);
     return generateBroadcasterBadge(item);
   }
 
@@ -96,11 +114,19 @@ export function getImageUrl(item) {
 export function proxyImageUrl(url) {
   if (!url || typeof url !== 'string') return '';
   if (url.startsWith('data:') || url.startsWith('blob:')) return url;
-  if (url.startsWith(window.location.origin)) return url;
-  if (/^https?:\/\//i.test(url)) {
-    return `${window.location.origin}/api/img?url=${encodeURIComponent(url)}`;
+  
+  // Normaliza thumbnails do Wikimedia para largura suportada (960px)
+  let target = url;
+  if (target.includes('upload.wikimedia.org') && target.includes('/512px-')) {
+    target = target.replace(/\/512px-/g, '/960px-');
   }
-  return url;
+
+  if (typeof window !== 'undefined' && target.startsWith(window.location.origin)) return target;
+  if (/^https?:\/\//i.test(target)) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}/api/img?url=${encodeURIComponent(target)}`;
+  }
+  return target;
 }
 
 // Backwards-compatible alias
@@ -235,6 +261,37 @@ export function getPlayableUrl(item) {
   return null;
 }
 
+export function normalizeLiveStreamUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  const trimmed = url.trim();
+  if (/\.m3u8(\?|$)/i.test(trimmed)) return trimmed;
+
+  // Xtream Codes with .ts: http://host:port/live/user/pass/id.ts -> .m3u8
+  if (/\/live\/([^\/]+)\/([^\/]+)\/(\d+)\.ts(\?|$)/i.test(trimmed)) {
+    return trimmed.replace(/\.ts(\?|$)/i, '.m3u8$1');
+  }
+
+  // Xtream Codes without /live/: http://host:port/user/pass/id -> /live/user/pass/id.m3u8
+  const m1 = trimmed.match(/^(https?:\/\/[^\/]+)\/([^\/]+)\/([^\/]+)\/(\d+)$/i);
+  if (m1) {
+    return `${m1[1]}/live/${m1[2]}/${m1[3]}/${m1[4]}.m3u8`;
+  }
+
+  // Xtream Codes with /live/ but without extension: http://host:port/live/user/pass/id -> .m3u8
+  const m2 = trimmed.match(/^(https?:\/\/[^\/]+)\/live\/([^\/]+)\/([^\/]+)\/(\d+)$/i);
+  if (m2) {
+    return `${m2[1]}/live/${m2[2]}/${m2[3]}/${m2[4]}.m3u8`;
+  }
+
+  // Xtream Codes without /live/ but with .ts: http://host:port/user/pass/id.ts -> /live/user/pass/id.m3u8
+  const m3 = trimmed.match(/^(https?:\/\/[^\/]+)\/([^\/]+)\/([^\/]+)\/(\d+)\.ts(\?|$)/i);
+  if (m3) {
+    return `${m3[1]}/live/${m3[2]}/${m3[3]}/${m3[4]}.m3u8${m3[5] || ''}`;
+  }
+
+  return trimmed;
+}
+
 export function formatDuration(seconds) {
   if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
   const h = Math.floor(seconds / 3600);
@@ -246,4 +303,5 @@ export function formatDuration(seconds) {
   }
   return `${m}:${s < 10 ? '0' : ''}${s}`;
 }
+
 

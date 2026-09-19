@@ -1,5 +1,5 @@
 // VSAIPTV PWA Service Worker (PWABuilder 100% Full-Spec Compliant)
-const CACHE_NAME = 'vsaiptv-cache-v3.1';
+const CACHE_NAME = 'vsaiptv-cache-v3.2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -27,7 +27,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_NAME) {
+          if (key.startsWith('vsaiptv-cache-') && key !== CACHE_NAME) {
             return caches.delete(key);
           }
         })
@@ -40,11 +40,18 @@ self.addEventListener('activate', (event) => {
 // Fetch Event (Network-First for auto-updates)
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+  // Somente arquivos estáticos desta aplicação. Nunca intercepta extensões,
+  // imagens externas, sessões, downloads, APIs ou transmissões.
+  if (!['http:', 'https:'].includes(url.protocol) ||
+      url.origin !== self.location.origin || event.request.method !== 'GET') return;
+  const isStatic = STATIC_ASSETS.includes(url.pathname) || url.pathname.startsWith('/assets/');
+  if (!isStatic && event.request.mode !== 'navigate') return;
 
   // Skip video streams (.m3u8, .ts, .mp4, mkv, etc.) and API/Xtream requests
   const path = url.pathname.toLowerCase();
   const fullUrl = url.href.toLowerCase();
   if (
+    path.endsWith('.php') || path.startsWith('/health') ||
     path.endsWith('.m3u8') ||
     path.endsWith('.ts') ||
     path.endsWith('.mp4') ||
@@ -62,26 +69,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response && response.status === 200 && event.request.method === 'GET') {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
+  event.respondWith((async () => {
+    try {
+      const response = await fetch(event.request);
+      if (response.status === 200 && isStatic && !url.search) {
+        const copy = response.clone();
+        // Falha de cache (quota/modo privado) não deve invalidar a resposta HTTP.
+        try { const cache = await caches.open(CACHE_NAME); await cache.put(event.request, copy); } catch {}
+      }
+      return response;
+    } catch {
+      try {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        if (event.request.mode === 'navigate') {
+          const shell = await caches.match('/index.html');
+          if (shell) return shell;
         }
-        return response;
-      })
-      .catch(() => {
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) return cachedResponse;
-          if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
-          }
-        });
-      })
-  );
+      } catch {}
+      return new Response('Sem conexão. Tente novamente.', {
+        status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      });
+    }
+  })());
 });
 
 // ==========================================

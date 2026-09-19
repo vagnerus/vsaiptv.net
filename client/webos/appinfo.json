@@ -1,0 +1,18 @@
+{
+  "id": "com.vsaiptv.tv",
+  "version": "1.0.0",
+  "vendor": "VSAIPTV",
+  "type": "web",
+  "main": "index.html",
+  "title": "VSAIPTV",
+  "icon": "icon.png",
+  "largeIcon": "icon.png",
+  "bgImage": "icon.png",
+  "splashBackground": "icon.png",
+  "appDescription": "VSAIPTV Universal Smart TV Platform",
+  "resolution": "1920x1080",
+  "requiredMemory": 64,
+  "supportGpu": true,
+  "disableBackHistoryAPI": true,
+  "uiRevision": 2
+}

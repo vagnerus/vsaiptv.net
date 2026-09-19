@@ -23,6 +23,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': 'http://localhost:5000',
+      '/media': 'http://localhost:5000',
       '/player_api.php': 'http://localhost:5000',
       '/get.php': 'http://localhost:5000',
       '/xmltv.php': 'http://localhost:5000',

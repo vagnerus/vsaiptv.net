@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import api from '../services/api';
 import VideoPlayer from '../components/VideoPlayer';
 import BottomNav from '../components/BottomNav';
@@ -10,9 +10,11 @@ const LiveTvView = lazy(() => import('./LiveTvView'));
 const VodGridView = lazy(() => import('./VodGridView'));
 const FavoritesView = lazy(() => import('./FavoritesView'));
 const SearchView = lazy(() => import('./SearchView'));
+const XxxView = lazy(() => import('./XxxView'));
 import { getPlayableUrl, getImageUrl, getPlaceholder, onImageError, getSubtitles } from '../utils/streamUtils';
+import { canSeeXxx } from '../utils/xxxAccess';
 import { useProgress } from '../hooks/useProgress';
-import { Radio, X, Play, Tv, Loader2, AlertCircle, ArrowUp } from 'lucide-react';
+import { Radio, X, Play, Tv, Loader2, AlertCircle, ArrowUp, Layers } from 'lucide-react';
 
 export default function ClientWebPlayer({ 
   user, 
@@ -30,6 +32,11 @@ export default function ClientWebPlayer({
   const [liveSearchQuery, setLiveSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // Área XXX (adulto) — catálogo carregado apenas quando a aba é aberta
+  const [xxxCatalog, setXxxCatalog] = useState([]);
+  const [xxxLoading, setXxxLoading] = useState(false);
+  const showXxxTab = canSeeXxx(user);
+
   // Playback state
   const [activeStream, setActiveStream] = useState(null);
   const [playbackSourceUrl, setPlaybackSourceUrl] = useState('');
@@ -40,6 +47,9 @@ export default function ClientWebPlayer({
   const [sessionToken, setSessionToken] = useState(null);
   const [playbackInitialSeek, setPlaybackInitialSeek] = useState(null);
   const [playbackSubtitles, setPlaybackSubtitles] = useState([]);
+  const [aiSubtitleJob, setAiSubtitleJob] = useState(null); // Legendas IA (FASE 36)
+  const aiSubtitlePollRef = useRef(null);
+  const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
   const playlistRef = useRef([]);
 
   // Playback UX feedback
@@ -47,6 +57,37 @@ export default function ClientWebPlayer({
   const [playbackErrorToast, setPlaybackErrorToast] = useState(null);
   const [isScrolledPastPlayer, setIsScrolledPastPlayer] = useState(false);
   const playerStageRef = useRef(null);
+
+  // ===== Legendas IA (FASE 34/35/36/37) — nunca bloqueia a reprodução =====
+  const mergeAiSubtitles = useCallback(async (stream, episode = null) => {
+    try {
+      if (!stream?.id || stream.type === 'live') return;
+      const res = await api.get(`/api/subtitles/content/${stream.id}`, {
+        params: episode?.id ? { episodeId: episode.id } : {},
+      });
+      const data = res.data || {};
+      setAiSubtitleJob(data.job || null);
+      if (Array.isArray(data.subtitles) && data.subtitles.length) {
+        setPlaybackSubtitles((prev) => {
+          const existing = new Set(prev.map((s) => s.url));
+          const fresh = data.subtitles
+            .filter((s) => s?.url && !existing.has(s.url))
+            .map((s) => ({ label: s.label, url: s.url }));
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
+      }
+    } catch (e) {
+      console.warn('[subtitles-ai] indisponível:', e?.response?.status || e.message);
+    }
+  }, []);
+
+  // FASE 35: poll leve enquanto houver job ativo — legenda aparece automaticamente
+  useEffect(() => {
+    if (!aiSubtitleJob || !activeStream?.id) return undefined;
+    const episode = activeStream.playingEpisodeId ? { id: activeStream.playingEpisodeId } : null;
+    aiSubtitlePollRef.current = setInterval(() => mergeAiSubtitles(activeStream, episode), 15000);
+    return () => { if (aiSubtitlePollRef.current) clearInterval(aiSubtitlePollRef.current); };
+  }, [aiSubtitleJob?.id, aiSubtitleJob?.status, activeStream?.id, activeStream?.playingEpisodeId, mergeAiSubtitles]);
 
   // Detail Modal state
   const [detailModalItem, setDetailModalItem] = useState(null);
@@ -115,10 +156,10 @@ export default function ClientWebPlayer({
     const loadInitialData = async () => {
       try {
         const [liveRes, moviesRes, seriesRes, novelasRes] = await Promise.all([
-          api.get('/api/client/streams?type=live'),
-          api.get('/api/client/streams?type=movie'),
-          api.get('/api/client/streams?type=series'),
-          api.get('/api/client/streams?type=novelas'),
+          api.get('/api/client/streams?type=live&limit=40'),
+          api.get('/api/client/streams?type=movie&limit=40'),
+          api.get('/api/client/streams?type=series&limit=40'),
+          api.get('/api/client/streams?type=novelas&limit=40'),
         ]);
 
         if (isMounted) {
@@ -148,14 +189,17 @@ export default function ClientWebPlayer({
     }
   }, [activeTab]);
 
-  // Se uma categoria for selecionada, recarrega a lista específica
+  // Carrega streams ao trocar de aba ou categoria selecionada (com limite ampliado)
   useEffect(() => {
     if (!['live', 'movie', 'series', 'novelas'].includes(activeTab)) return;
-    if (!selectedCategory) return;
 
     let isMounted = true;
     setIsLoading(true);
-    api.get(`/api/client/streams?type=${activeTab}&category_id=${selectedCategory}`)
+
+    const catParam = selectedCategory ? `&category_id=${selectedCategory}` : '';
+    const limitParam = selectedCategory ? '500' : '400';
+
+    api.get(`/api/client/streams?type=${activeTab}${catParam}&limit=${limitParam}`)
       .then((res) => {
         if (!isMounted) return;
         if (activeTab === 'live') setLiveChannels(res.data || []);
@@ -163,13 +207,33 @@ export default function ClientWebPlayer({
         else if (activeTab === 'series') setSeries(res.data || []);
         else if (activeTab === 'novelas') setNovelas(res.data || []);
       })
-      .catch((err) => console.error(err))
+      .catch((err) => console.error('Erro ao carregar streams:', err))
       .finally(() => {
         if (isMounted) setIsLoading(false);
       });
 
     return () => { isMounted = false; };
-  }, [selectedCategory, activeTab]);
+  }, [activeTab, selectedCategory]);
+
+  // Catálogo da área XXX (carregado apenas quando a aba XXX é aberta)
+  const loadXxxCatalog = useCallback(async () => {
+    setXxxLoading(true);
+    try {
+      const res = await api.get('/api/client/xxx/catalog?limit=300');
+      setXxxCatalog(res.data || []);
+    } catch (err) {
+      console.error('Falha ao carregar o catálogo XXX:', err);
+      setXxxCatalog([]);
+    } finally {
+      setXxxLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'xxx') loadXxxCatalog();
+  }, [activeTab, loadXxxCatalog]);
+
+
 
   // Itens para o Hero Banner cinematográfico (mescla de filmes e séries populares)
   const featuredList = useMemo(() => {
@@ -269,6 +333,7 @@ export default function ClientWebPlayer({
             ...getSubtitles(fullEpisode),
             ...getSubtitles(fullStream),
           ]);
+          mergeAiSubtitles(fullStream, fullEpisode); // FASE 34: busca "Português (IA)"
           setActiveStream({ ...fullStream, playingEpisodeId: fullEpisode.id });
           playlistRef.current = serverEpisodes;
           scrollToPlayer();
@@ -288,6 +353,7 @@ export default function ClientWebPlayer({
         setPlaybackType(fullStream.type || 'live');
         setPlaybackPoster(getImageUrl(fullStream));
         setPlaybackSubtitles(getSubtitles(fullStream));
+        mergeAiSubtitles(fullStream); // FASE 34: busca "Português (IA)" p/ filmes
         setActiveStream(fullStream);
         scrollToPlayer();
       }
@@ -314,6 +380,52 @@ export default function ClientWebPlayer({
       setIsStartingPlayback(false);
     }
   };
+
+  // Reprodução da área XXX: usa a rota protegida /api/client/xxx/stream/:id
+  const startXxxPlayback = async (item) => {
+    if (!item) return;
+
+    if (sessionToken) {
+      api.post('/api/client/session/close', { sessionToken }).catch(() => {});
+    }
+
+    setIsStartingPlayback(true);
+    setPlaybackErrorToast(null);
+    setPlaybackInitialSeek(null);
+    scrollToPlayer();
+
+    try {
+      const res = await api.get(`/api/client/xxx/stream/${item.id}`);
+      const serverStream = res.data?.stream || item;
+      const fullStream = { ...item, ...serverStream };
+      const streamUrl = getPlayableUrl(fullStream);
+      if (!streamUrl) {
+        throw new Error('Conteúdo sem URL de transmissão disponível.');
+      }
+
+      setSessionToken(res.data?.sessionToken || null);
+      setCurrentProgram(null);
+      setPlaybackSourceUrl(streamUrl);
+      setPlaybackTitle(fullStream.name);
+      setPlaybackType(fullStream.type || 'live');
+      setPlaybackPoster(getImageUrl(fullStream));
+      setPlaybackSubtitles([]);
+      setActiveStream(fullStream);
+      playlistRef.current = [];
+      setupP2PTracker(fullStream.id);
+      scrollToPlayer();
+    } catch (err) {
+      console.error('XXX playback setup error:', err);
+      setPlaybackErrorToast(
+        err.response?.data?.error ||
+        err.message ||
+        'Não foi possível iniciar este conteúdo. Tente novamente.'
+      );
+    } finally {
+      setIsStartingPlayback(false);
+    }
+  };
+
 
   // Fechar o player
   const handleClosePlayer = () => {
@@ -440,8 +552,31 @@ export default function ClientWebPlayer({
               subtitles={playbackSubtitles}
               channels={liveChannels}
               onSwitchChannel={(ch) => startPlayback(ch)}
+              nextEpisode={(() => {
+                const list = playlistRef.current || [];
+                if (!list.length || !activeStream?.playingEpisodeId) return null;
+                const idx = list.findIndex((e) => e.id === activeStream.playingEpisodeId);
+                return idx >= 0 && idx < list.length - 1 ? list[idx + 1] : null;
+              })()}
+              onPlayNext={(nextEp) => startPlayback(activeStream, nextEp)}
+              onFullscreenChange={(isFs) => setIsPlayerFullscreen(isFs)}
               autoPlay={true}
             />
+
+            {/* FASE 36: aviso não-bloqueante de geração de legenda IA */}
+            {aiSubtitleJob && (
+              <div style={{
+                marginTop: '10px', padding: '10px 16px', borderRadius: 'var(--radius-md)',
+                background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.4)',
+                fontSize: '0.85rem', color: '#c7d2fe', display: 'flex', alignItems: 'center', gap: '10px',
+              }}>
+                <span role="img" aria-label="legenda">🈯</span>
+                <span>
+                  Legenda em português está sendo preparada ({aiSubtitleJob.stage === 'WAITING_TRANSLATION' ? 'aguardando IA' : aiSubtitleJob.stage || 'processando'}):{' '}
+                  <strong>{aiSubtitleJob.progress ?? 0}%</strong>
+                </span>
+              </div>
+            )}
 
             {/* Stream Metadata & Telemetry Card */}
             {activeStream && (
@@ -494,24 +629,47 @@ export default function ClientWebPlayer({
                   </div>
                 </div>
 
-                {/* P2P Mesh Telemetry Widget */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '16px',
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  padding: '6px 14px',
-                  borderRadius: 'var(--radius-full)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Radio size={14} color="#22d3ee" className="animate-pulse" />
-                    <span style={{ fontSize: '0.78rem', color: '#cbd5e1' }}>
-                      P2P: <strong>{p2pStats.peersCount} {p2pStats.peersCount === 1 ? 'par' : 'pares'}</strong>
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '700' }}>
-                    {p2pStats.offloadPercent}% Economia
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  {/* Botão de Escolher Temporadas & Episódios para Séries e Novelas */}
+                  {(playbackType === 'episode' || activeStream.type === 'series' || activeStream.category_name?.toLowerCase().includes('novela')) && (
+                    <button
+                      onClick={() => setDetailModalItem(activeStream)}
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        borderRadius: 'var(--radius-full)',
+                        fontWeight: '700',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        background: 'rgba(99, 102, 241, 0.2)',
+                        borderColor: 'rgba(99, 102, 241, 0.4)',
+                        color: '#a5b4fc',
+                        padding: '7px 16px',
+                      }}
+                    >
+                      <Layers size={15} /> Ver Temporadas & Episódios
+                    </button>
+                  )}
+
+                  {/* P2P Mesh Telemetry Widget */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    padding: '6px 14px',
+                    borderRadius: 'var(--radius-full)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Radio size={14} color="#22d3ee" className="animate-pulse" />
+                      <span style={{ fontSize: '0.78rem', color: '#cbd5e1' }}>
+                        P2P: <strong>{p2pStats.peersCount} {p2pStats.peersCount === 1 ? 'par' : 'pares'}</strong>
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '700' }}>
+                      {p2pStats.offloadPercent}% Economia
+                    </div>
                   </div>
                 </div>
               </div>
@@ -596,6 +754,17 @@ export default function ClientWebPlayer({
               activeStreamId={activeStream?.id}
             />
           )}
+
+          {activeTab === 'xxx' && (
+            <XxxView
+              user={user}
+              catalog={xxxCatalog}
+              isLoading={xxxLoading}
+              onPlay={(item) => startXxxPlayback(item)}
+              onReload={loadXxxCatalog}
+              onBack={() => onTabChange?.('home')}
+            />
+          )}
         </Suspense>
       </main>
 
@@ -610,7 +779,7 @@ export default function ClientWebPlayer({
       )}
 
       {/* FLOATING RETURN-TO-PLAYER DOCK (Aparece quando há vídeo tocando e o usuário rolou para baixo) */}
-      {playbackSourceUrl && isScrolledPastPlayer && (
+      {playbackSourceUrl && isScrolledPastPlayer && !isPlayerFullscreen && (
         <div 
           className="vsa-floating-player-bar animate-fade"
           onClick={scrollToPlayer}
@@ -644,6 +813,7 @@ export default function ClientWebPlayer({
         <BottomNav
           activeTab={activeTab}
           onTabChange={onTabChange}
+          showXxx={showXxxTab}
         />
       )}
 

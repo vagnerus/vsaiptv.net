@@ -14,7 +14,7 @@ function authenticateClient(username, password, clientIp) {
     return { error: 'Credenciais ausentes' };
   }
 
-  const user = db.prepare("SELECT * FROM users WHERE username = ? AND role = 'client'").get(username);
+  const user = db.prepare("SELECT * FROM users WHERE LOWER(username) = LOWER(?)").get(username ? username.trim() : '');
   if (!user) {
     return { error: 'Usuário não encontrado' };
   }
@@ -378,8 +378,8 @@ router.get('/live/:username/:password/:streamId', (req, res) => {
 
   const user = auth.user;
 
-  // Check simultaneous screens
-  if (!ConnectionManager.canUserConnect(user.id, user.max_connections)) {
+  // Check simultaneous screens (revendedores e masters são ilimitados)
+  if (user.role !== 'master' && user.role !== 'reseller' && !ConnectionManager.canUserConnect(user.id, user.max_connections)) {
     return res.status(429).json({ error: 'Limite de telas simultâneas excedido para esta conta.' });
   }
 
@@ -425,12 +425,9 @@ router.get('/movie/:username/:password/:streamId', (req, res) => {
     deviceType: 'VOD Player',
   });
 
-    // Redirect via proxy if http (avoids mixed content on HTTPS)
-  if (/^http:\/\//i.test(stream.stream_url)) {
-    const proxyUrl = '/media/proxy?src=' + encodeURIComponent(stream.stream_url);
-    return res.redirect(proxyUrl);
-  }
-  res.redirect(stream.stream_url);
+    // Redirect via media proxy (avoids mixed content, handles CORS, Range and token headers)
+  const proxyUrl = '/media/proxy?src=' + encodeURIComponent(stream.stream_url);
+  return res.redirect(proxyUrl);
 });
 
 // Episódios de séries

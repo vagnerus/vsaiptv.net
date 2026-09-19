@@ -25,11 +25,40 @@ export default function LiveTvView({
     setDisplayLimit(60);
   };
 
-  // Channels to filter: if 'favorites' category is selected, filter to favorites only
+  // Total real de canais baseado nas categorias do catálogo
+  const totalCatalogChannels = useMemo(() => {
+    if (categories && categories.length > 0) {
+      const sum = categories.reduce((acc, cat) => acc + (cat.item_count || 0), 0);
+      if (sum > 0) return sum;
+    }
+    return channels.length;
+  }, [categories, channels]);
+
+  // Contagem dinâmica de canais por categoria (fallback se item_count não vier)
+  const categoryCounts = useMemo(() => {
+    const counts = {};
+    for (const c of channels) {
+      const cid = String(c.category_id || '');
+      counts[cid] = (counts[cid] || 0) + 1;
+    }
+    return counts;
+  }, [channels]);
+
+  // Exibe todas as categorias disponíveis retornadas pela API
+  const visibleCategories = useMemo(() => {
+    if (categories && categories.length > 0) return categories;
+    return categories.filter((cat) => (cat.item_count > 0 || (categoryCounts[String(cat.id)] || 0) > 0));
+  }, [categories, categoryCounts]);
+
+  // Channels to filter: if 'favorites' category is selected, filter to favorites only.
+  // If a category ID is selected, filter channels belonging to that category.
   const baseChannels = useMemo(() => {
     if (selectedCategory === 'favorites') {
       const favIds = new Set(favorites.map((f) => String(f.id)));
       return channels.filter((c) => favIds.has(String(c.id)));
+    }
+    if (selectedCategory !== null && selectedCategory !== undefined && selectedCategory !== '') {
+      return channels.filter((c) => String(c.category_id) === String(selectedCategory));
     }
     return channels;
   }, [channels, selectedCategory, favorites]);
@@ -46,6 +75,13 @@ export default function LiveTvView({
   }, [filteredChannels, displayLimit]);
 
   const hasMore = filteredChannels.length > displayLimit;
+
+  const scrollCategories = (direction) => {
+    const bar = document.getElementById('livetv-cat-bar');
+    if (bar) {
+      bar.scrollBy({ left: direction * 280, behavior: 'smooth' });
+    }
+  };
 
   return (
     <div className="livetv-view-container animate-fade">
@@ -74,7 +110,9 @@ export default function LiveTvView({
               TV Ao Vivo
             </h1>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              {filteredChannels.length} canais transmitindo em tempo real
+              {selectedCategory 
+                ? `${filteredChannels.length} canais na categoria selecionada`
+                : `${totalCatalogChannels.toLocaleString()} canais transmitindo em tempo real`}
             </span>
           </div>
         </div>
@@ -111,33 +149,86 @@ export default function LiveTvView({
         </div>
       </div>
 
-      {/* Category Pills Bar with 'Todos' and '★ Favoritos' */}
-      <div className="livetv-categories-bar no-scrollbar">
+      {/* Category Pills Bar with Horizontal Scroll Navigation */}
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', margin: '16px 0 20px' }}>
         <button
-          className={`livetv-cat-pill ${selectedCategory === null ? 'active' : ''}`}
-          onClick={() => { onSelectCategory(null); setDisplayLimit(60); }}
+          onClick={() => scrollCategories(-1)}
+          className="btn btn-secondary"
+          style={{
+            minWidth: '32px',
+            width: '32px',
+            height: '32px',
+            padding: 0,
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: '6px',
+            flexShrink: 0,
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.12)'
+          }}
+          aria-label="Rolar categorias para esquerda"
         >
-          Todos os Canais ({channels.length})
+          ‹
         </button>
 
-        <button
-          className={`livetv-cat-pill ${selectedCategory === 'favorites' ? 'active' : ''}`}
-          onClick={() => { onSelectCategory('favorites'); setDisplayLimit(60); }}
-          style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
-        >
-          <Star size={13} fill={selectedCategory === 'favorites' ? '#fff' : '#f59e0b'} color={selectedCategory === 'favorites' ? '#fff' : '#f59e0b'} />
-          Favoritos ({favorites.filter(f => f.type === 'live').length})
-        </button>
-
-        {categories.map((cat) => (
+        <div id="livetv-cat-bar" className="livetv-categories-bar no-scrollbar" style={{ flex: 1, margin: 0, overflowX: 'auto', scrollBehavior: 'smooth' }}>
           <button
-            key={cat.id}
-            className={`livetv-cat-pill ${selectedCategory === cat.id ? 'active' : ''}`}
-            onClick={() => { onSelectCategory(cat.id); setDisplayLimit(60); }}
+            className={`livetv-cat-pill ${selectedCategory === null ? 'active' : ''}`}
+            onClick={() => { onSelectCategory(null); setDisplayLimit(60); }}
           >
-            {cat.name}
+            Todos os Canais ({totalCatalogChannels.toLocaleString()})
           </button>
-        ))}
+
+          <button
+            className={`livetv-cat-pill ${selectedCategory === 'favorites' ? 'active' : ''}`}
+            onClick={() => { onSelectCategory(selectedCategory === 'favorites' ? null : 'favorites'); setDisplayLimit(60); }}
+            style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+          >
+            <Star size={13} fill={selectedCategory === 'favorites' ? '#fff' : '#f59e0b'} color={selectedCategory === 'favorites' ? '#fff' : '#f59e0b'} />
+            Favoritos ({favorites.filter(f => f.type === 'live').length})
+          </button>
+
+          {visibleCategories.map((cat) => {
+            const isSelected = String(selectedCategory) === String(cat.id);
+            const count = cat.item_count !== undefined ? cat.item_count : (categoryCounts[String(cat.id)] || 0);
+            return (
+              <button
+                key={cat.id}
+                className={`livetv-cat-pill ${isSelected ? 'active' : ''}`}
+                onClick={() => {
+                  onSelectCategory(isSelected ? null : cat.id);
+                  setDisplayLimit(60);
+                }}
+              >
+                {cat.name} ({count.toLocaleString()})
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={() => scrollCategories(1)}
+          className="btn btn-secondary"
+          style={{
+            minWidth: '32px',
+            width: '32px',
+            height: '32px',
+            padding: 0,
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginLeft: '6px',
+            flexShrink: 0,
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.12)'
+          }}
+          aria-label="Rolar categorias para direita"
+        >
+          ›
+        </button>
       </div>
 
       {/* Channels Grid */}

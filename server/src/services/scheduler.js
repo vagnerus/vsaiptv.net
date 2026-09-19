@@ -1,7 +1,8 @@
 const db = require('../db/database');
+const { syncAllChannels } = require('./channelListSyncService');
 
 function startScheduler() {
-  console.log('⏰ Starting background task scheduler (Expiration & Audit worker)...');
+  console.log('⏰ Starting background task scheduler (Expiration, Audit & Channel Auto-Sync worker)...');
 
   const checkExpirations = () => {
     try {
@@ -41,6 +42,25 @@ function startScheduler() {
   // Run immediately and every 30 seconds
   checkExpirations();
   setInterval(checkExpirations, 30000);
+
+  // Sincronização automática contínua de canais da web a cada 24 horas (primeira após 2 minutos de boot)
+  const runAutoChannelSync = () => {
+    console.log('📡 [Scheduler] Disparando auto-sincronização periódica de canais via Web...');
+    syncAllChannels({ apply: true })
+      .then((res) => {
+        if (res.ok) {
+          console.log(`📡 [Scheduler] Auto-sincronização concluída: ${res.report.totalAtivos} streams ativos.`);
+        } else {
+          console.warn(`📡 [Scheduler] Aviso na auto-sincronização:`, res.message || res.error);
+        }
+      })
+      .catch((err) => {
+        console.error('📡 [Scheduler] Erro na auto-sincronização de canais:', err.message);
+      });
+  };
+
+  setTimeout(runAutoChannelSync, 2 * 60 * 1000); // 2 minutos após o boot
+  setInterval(runAutoChannelSync, 24 * 60 * 60 * 1000); // A cada 24 horas
 }
 
 module.exports = { startScheduler };

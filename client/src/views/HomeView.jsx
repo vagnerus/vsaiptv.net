@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import HeroBanner from '../components/HeroBanner';
 import ContentRow from '../components/ContentRow';
-import { Tv, Film, Clapperboard, Layers, History, Star, Flame, Sparkles, Play } from 'lucide-react';
+import { Tv, Film, Clapperboard, Layers, History, Star, Flame, Sparkles, Play, X, Clock } from 'lucide-react';
 import { useFavorites } from '../hooks/useFavorites';
+import { useProgress } from '../hooks/useProgress';
 import { getPlayableUrl } from '../utils/streamUtils';
 
 export default function HomeView({
@@ -19,12 +20,14 @@ export default function HomeView({
   activeStreamId = null,
 }) {
   const { favorites } = useFavorites();
+  const { removeProgress } = useProgress();
 
   const validContinueItems = useMemo(() => {
     if (!continueWatching || !Array.isArray(continueWatching)) return [];
     return continueWatching.filter((p) => {
-      if (p.completed === 1) return false;
-      if (!p.progress_time || p.progress_time < 15) return false;
+      if (p.completed === 1 || p.completed === true) return false;
+      if (p.is_removed === 1) return false;
+      if (!p.progress_time || p.progress_time < 20) return false;
       if (p.duration > 0 && (p.progress_time / p.duration) >= 0.95) return false;
       return true;
     });
@@ -35,6 +38,24 @@ export default function HomeView({
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const handleContinuePlay = (p) => {
+    if (p.type === 'series' && p.episode_id) {
+      onPlayDirect?.(
+        { id: p.stream_id, name: p.stream_name, type: 'series', poster_url: p.poster_url, backdrop_url: p.backdrop_url },
+        { id: p.episode_id, season_num: p.season_num, episode_num: p.episode_num, title: p.episode_title },
+        p.progress_time
+      );
+    } else if (p.type === 'series') {
+      onOpenDetails?.({ id: p.stream_id, name: p.stream_name, poster_url: p.poster_url, type: 'series' });
+    } else {
+      onPlayDirect?.(
+        { id: p.stream_id, name: p.stream_name, type: 'movie', poster_url: p.poster_url, backdrop_url: p.backdrop_url },
+        null,
+        p.progress_time
+      );
+    }
   };
 
   return (
@@ -59,27 +80,23 @@ export default function HomeView({
             {validContinueItems
               .slice(0, 15)
               .map((p) => {
-                const pct = p.duration > 0 ? Math.min(100, Math.round((p.progress_time / p.duration) * 100)) : (p.completed ? 100 : 0);
+                const pct = p.progress_percent || (p.duration > 0 ? Math.min(100, Math.round((p.progress_time / p.duration) * 100)) : 0);
+                const remSecs = p.duration > p.progress_time ? p.duration - p.progress_time : 0;
+                const remMins = Math.max(1, Math.round(remSecs / 60));
+
                 return (
                   <div
                     key={`${p.stream_id}-${p.episode_id || 'm'}`}
                     className="continue-card"
+                    tabIndex={0}
+                    data-nav="true"
+                    data-card="true"
                     title={`Continuar ${p.stream_name} de onde parou (${formatProgressTime(p.progress_time)})`}
-                    onClick={() => {
-                      if (p.type === 'series' && p.episode_id) {
-                        onPlayDirect?.(
-                          { id: p.stream_id, name: p.stream_name, type: 'series', poster_url: p.poster_url, backdrop_url: p.backdrop_url },
-                          { id: p.episode_id, season_num: p.season_num, episode_num: p.episode_num, title: p.episode_title },
-                          p.progress_time
-                        );
-                      } else if (p.type === 'series') {
-                        onOpenDetails?.({ id: p.stream_id, name: p.stream_name, poster_url: p.poster_url, type: 'series' });
-                      } else {
-                        onPlayDirect?.(
-                          { id: p.stream_id, name: p.stream_name, type: 'movie', poster_url: p.poster_url, backdrop_url: p.backdrop_url },
-                          null,
-                          p.progress_time
-                        );
+                    onClick={() => handleContinuePlay(p)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleContinuePlay(p);
                       }
                     }}
                   >
@@ -92,6 +109,29 @@ export default function HomeView({
                           e.currentTarget.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="230" height="144" viewBox="0 0 230 144"><rect width="230" height="144" fill="%230c121e"/><text x="50%" y="50%" fill="%2364748b" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle" dy=".3em">VSA IPTV</text></svg>';
                         }}
                       />
+
+                      {/* Botão de exclusão rápida de Continuar Assistindo */}
+                      <button
+                        className="continue-remove-btn"
+                        title="Remover de Continuar Assistindo"
+                        aria-label="Remover de Continuar Assistindo"
+                        tabIndex={0}
+                        data-nav="true"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeProgress(p.stream_id, p.episode_id);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            removeProgress(p.stream_id, p.episode_id);
+                          }
+                        }}
+                      >
+                        <X size={13} />
+                      </button>
+
                       <div className="continue-play-overlay">
                         <div className="continue-play-btn" title="Continuar de onde parou">
                           <Play size={22} fill="#fff" color="#fff" style={{ marginLeft: 2 }} />
@@ -107,7 +147,7 @@ export default function HomeView({
                         {p.type === 'series' && p.episode_id ? (
                           <span>T{p.season_num || 1}:E{p.episode_num} {p.episode_title ? `• ${p.episode_title}` : ''}</span>
                         ) : (
-                          <span>{pct}% assistido</span>
+                          <span className="continue-time-rem">{remMins} min restantes</span>
                         )}
                         <span className="continue-time-tag">{formatProgressTime(p.progress_time)}</span>
                       </div>

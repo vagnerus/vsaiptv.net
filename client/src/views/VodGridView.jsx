@@ -19,6 +19,15 @@ export default function VodGridView({
   const title = type === 'novelas' ? 'Novelas' : type === 'series' ? 'Séries' : 'Filmes (VOD)';
   const Icon = type === 'novelas' ? Layers : type === 'series' ? Clapperboard : Film;
 
+  // Total real de itens baseado nas categorias do catálogo
+  const totalCatalogItems = useMemo(() => {
+    if (categories && categories.length > 0) {
+      const sum = categories.reduce((acc, cat) => acc + (cat.item_count || 0), 0);
+      if (sum > 0) return sum;
+    }
+    return items.length;
+  }, [categories, items]);
+
   const filtered = useMemo(() => {
     if (!search.trim()) return items;
     const q = search.toLowerCase().trim();
@@ -30,6 +39,13 @@ export default function VodGridView({
   }, [filtered, displayLimit]);
 
   const hasMore = filtered.length > displayLimit;
+
+  const scrollCategories = (direction) => {
+    const bar = document.getElementById(`vod-cat-bar-${type}`);
+    if (bar) {
+      bar.scrollBy({ left: direction * 280, behavior: 'smooth' });
+    }
+  };
 
   return (
     <div className="vod-grid-container animate-fade">
@@ -62,7 +78,9 @@ export default function VodGridView({
               {title}
             </h1>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              {filtered.length} títulos disponíveis no catálogo
+              {selectedCategory 
+                ? `${filtered.length} títulos na categoria selecionada`
+                : `${totalCatalogItems.toLocaleString()} títulos disponíveis no catálogo`}
             </span>
           </div>
         </div>
@@ -98,24 +116,70 @@ export default function VodGridView({
         </div>
       </div>
 
-      {/* Categories Filter Pills Bar */}
+      {/* Categories Filter Pills Bar with Horizontal Scroll Navigation */}
       {categories.length > 0 && (
-        <div className="livetv-categories-bar no-scrollbar">
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', margin: '16px 0 20px' }}>
           <button
-            className={`livetv-cat-pill ${selectedCategory === null ? 'active' : ''}`}
-            onClick={() => { onSelectCategory(null); setDisplayLimit(60); }}
+            onClick={() => scrollCategories(-1)}
+            className="btn btn-secondary"
+            style={{
+              minWidth: '32px',
+              width: '32px',
+              height: '32px',
+              padding: 0,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: '6px',
+              flexShrink: 0,
+              background: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.12)'
+            }}
+            aria-label="Rolar categorias para esquerda"
           >
-            Todos ({items.length})
+            ‹
           </button>
-          {categories.map((cat) => (
+
+          <div id={`vod-cat-bar-${type}`} className="livetv-categories-bar no-scrollbar" style={{ flex: 1, margin: 0, overflowX: 'auto', scrollBehavior: 'smooth' }}>
             <button
-              key={cat.id}
-              className={`livetv-cat-pill ${selectedCategory === cat.id ? 'active' : ''}`}
-              onClick={() => { onSelectCategory(cat.id); setDisplayLimit(60); }}
+              className={`livetv-cat-pill ${selectedCategory === null ? 'active' : ''}`}
+              onClick={() => { onSelectCategory(null); setDisplayLimit(60); }}
             >
-              {cat.name}
+              Todos ({totalCatalogItems.toLocaleString()})
             </button>
-          ))}
+            {categories.map((cat) => (
+              <button
+                key={cat.id}
+                className={`livetv-cat-pill ${selectedCategory === cat.id ? 'active' : ''}`}
+                onClick={() => { onSelectCategory(cat.id); setDisplayLimit(60); }}
+              >
+                {cat.name} {cat.item_count !== undefined ? `(${cat.item_count.toLocaleString()})` : ''}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => scrollCategories(1)}
+            className="btn btn-secondary"
+            style={{
+              minWidth: '32px',
+              width: '32px',
+              height: '32px',
+              padding: 0,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: '6px',
+              flexShrink: 0,
+              background: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.12)'
+            }}
+            aria-label="Rolar categorias para direita"
+          >
+            ›
+          </button>
         </div>
       )}
 

@@ -132,6 +132,7 @@ export default function QuickChannelDrawer({
               <img
                 src={logo || getPlaceholder(ch)}
                 alt=""
+                loading="lazy"
                 style={{
                   width: '46px',
                   height: '30px',

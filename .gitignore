@@ -38,8 +38,25 @@ server/data/images/
 server/storage/images/
 server/data/backups/
 
+# Gradle & Android build
+.gradle/
+android_app/.gradle/
+android_app/app/build/
+android_app/build/
+build/
+*.bin
+*.lock
+
+# Temporary and Scratch files
+scratch/
+browser_playback_report.json
+catalog_media_sample.json
+list_sync_report.json
+_channel_diag_targets.json
+
 # IDE & OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+

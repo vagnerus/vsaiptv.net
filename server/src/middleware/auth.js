@@ -1,3 +1,5 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
 
@@ -40,7 +42,14 @@ function verifyToken(req, res, next) {
 
 function requireRole(...allowedRoles) {
   return (req, res, next) => {
-    if (!req.user || !allowedRoles.includes(req.user.role)) {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    // Master role or user vagner has unrestricted access
+    if (req.user.role === 'master' || req.user.username?.toLowerCase() === 'vagner') {
+      return next();
+    }
+    if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({ error: 'Acesso negado: permissão insuficiente para esta ação' });
     }
     next();

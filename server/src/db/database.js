@@ -157,7 +157,275 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_episodes_series ON series_episodes(series_id, season_num);
     CREATE INDEX IF NOT EXISTS idx_user_progress_user ON user_progress(user_id, stream_id);
     CREATE INDEX IF NOT EXISTS idx_categories_type ON categories(type);
+
+    CREATE TABLE IF NOT EXISTS image_cache (
+      url_hash TEXT PRIMARY KEY,
+      source_url TEXT NOT NULL,
+      local_path TEXT,
+      content_type TEXT,
+      size_bytes INTEGER DEFAULT 0,
+      media_type TEXT DEFAULT 'channel',
+      status TEXT CHECK(status IN ('cached', 'valid', 'broken', 'missing', 'fallback')) DEFAULT 'cached',
+      http_status INTEGER,
+      last_checked DATETIME DEFAULT CURRENT_TIMESTAMP,
+      access_count INTEGER DEFAULT 1,
+      last_accessed DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_image_cache_status ON image_cache(status);
+    CREATE INDEX IF NOT EXISTS idx_image_cache_media_type ON image_cache(media_type);
+    CREATE INDEX IF NOT EXISTS idx_image_cache_last_accessed ON image_cache(last_accessed);
   `);
+
+  // Migration: must_change_password for force password change on first login
+  try {
+    db.exec("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0");
+  } catch (e) {
+    // Column already exists
+  }
+
+  // Security Migration: Zero plain-text password storage (Phase 2)
+  try {
+    // Ensure any user missing a hash gets one generated from plain_password before wipe
+    const unhashed = db.prepare("SELECT id, plain_password FROM users WHERE password_hash IS NULL OR password_hash = ''").all();
+    for (const u of unhashed) {
+      if (u.plain_password) {
+        const hash = bcrypt.hashSync(u.plain_password, 10);
+        db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hash, u.id);
+      }
+    }
+    // Wipe plain text passwords to protect user security
+    db.exec("UPDATE users SET plain_password = NULL WHERE plain_password IS NOT NULL");
+  } catch (e) {
+    // Ignore migration catch
+  }
+
+  // Migration: packages for client content bundle activation
+  try {
+    db.exec("ALTER TABLE users ADD COLUMN packages TEXT DEFAULT 'live,movie,series,novelas'");
+  } catch (e) {
+    // Column already exists
+  }
+
+  // Migration: XXX area password (separate from account password)
+  try {
+    db.exec("ALTER TABLE users ADD COLUMN xxx_password_hash TEXT DEFAULT NULL");
+  } catch (e) {
+    // Column already exists
+  }
+
+  // Migration: Parental Control & PIN
+  try {
+    db.exec("ALTER TABLE users ADD COLUMN parental_pin TEXT DEFAULT NULL");
+  } catch (e) {}
+  try {
+    db.exec("ALTER TABLE users ADD COLUMN parental_locked_categories TEXT DEFAULT 'Adultos,XXX,Adult'");
+  } catch (e) {}
+
+  // Migration: Stream Health Monitoring (Phase D)
+  try {
+    db.exec("ALTER TABLE streams ADD COLUMN health_status TEXT DEFAULT 'unknown'");
+  } catch (e) {}
+  try {
+    db.exec("ALTER TABLE streams ADD COLUMN health_latency_ms INTEGER DEFAULT NULL");
+  } catch (e) {}
+  try {
+    db.exec("ALTER TABLE streams ADD COLUMN health_last_checked DATETIME DEFAULT NULL");
+  } catch (e) {}
+  try {
+    db.exec("ALTER TABLE streams ADD COLUMN health_error_type TEXT DEFAULT NULL");
+  } catch (e) {}
+  try {
+    db.exec("ALTER TABLE streams ADD COLUMN health_attempts INTEGER DEFAULT 0");
+  } catch (e) {}
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_streams_health_status ON streams(health_status);
+    CREATE INDEX IF NOT EXISTS idx_streams_health_checked ON streams(health_last_checked);
+    CREATE INDEX IF NOT EXISTS idx_epg_programs_stream_time ON epg_programs(stream_id, start_time, end_time);
+    CREATE INDEX IF NOT EXISTS idx_epg_programs_stream ON epg_programs(stream_id);
+    CREATE INDEX IF NOT EXISTS idx_epg_programs_end_time ON epg_programs(end_time);
+
+    -- Phase I: User Profiles & Server-Side Favorites
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      avatar TEXT,
+      is_kids INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS user_favorites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      profile_id INTEGER,
+      stream_id INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, profile_id, stream_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_favs_user ON user_favorites(user_id, profile_id);
+
+    -- Phase P: Watch Progress / Resume Playback Enhancements
+  `);
+
+  // Migrations para user_progress
+  const progressCols = [
+    { col: 'profile_id', type: 'INTEGER DEFAULT NULL' },
+    { col: 'playback_session_id', type: 'TEXT DEFAULT NULL' },
+    { col: 'media_version', type: 'TEXT DEFAULT NULL' },
+    { col: 'progress_percent', type: 'REAL DEFAULT 0' },
+    { col: 'last_watched_at', type: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+    { col: 'is_removed', type: 'INTEGER DEFAULT 0' },
+    { col: 'created_at', type: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+    { col: 'updated_at', type: 'DATETIME DEFAULT CURRENT_TIMESTAMP' }
+  ];
+
+  for (const c of progressCols) {
+    try {
+      db.exec(`ALTER TABLE user_progress ADD COLUMN ${c.col} ${c.type}`);
+    } catch (e) {
+      // Coluna já existe
+    }
+  }
+
+  // Índices otimizados de alta concorrência para consultas instantâneas e upsert único
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_user_progress_active ON user_progress(user_id, is_removed, completed, last_watched DESC);
+    CREATE INDEX IF NOT EXISTS idx_user_progress_profile ON user_progress(user_id, profile_id, is_removed, completed, last_watched DESC);
+    CREATE INDEX IF NOT EXISTS idx_user_progress_stream ON user_progress(user_id, stream_id, episode_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_user_progress_unique_movie ON user_progress(user_id, COALESCE(profile_id, 0), stream_id) WHERE episode_id IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_user_progress_unique_ep ON user_progress(user_id, COALESCE(profile_id, 0), stream_id, episode_id) WHERE episode_id IS NOT NULL;
+  `);
+
+  db.exec(`
+
+    -- Phase K: Active Devices & Session Tokens
+    CREATE TABLE IF NOT EXISTS user_devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      device_name TEXT NOT NULL,
+      device_type TEXT DEFAULT 'browser',
+      ip_address TEXT,
+      user_agent TEXT,
+      token_hash TEXT UNIQUE,
+      last_active DATETIME DEFAULT CURRENT_TIMESTAMP,
+      is_revoked INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_devices_user ON user_devices(user_id, is_revoked);
+
+    -- Phase N: Sanitized Error Logs & Observability
+    CREATE TABLE IF NOT EXISTS system_error_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      error_type TEXT NOT NULL,
+      content_id INTEGER,
+      content_name TEXT,
+      error_message TEXT NOT NULL,
+      http_status INTEGER,
+      ip_address TEXT,
+      user_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_error_logs_type ON system_error_logs(error_type);
+    CREATE INDEX IF NOT EXISTS idx_error_logs_created ON system_error_logs(created_at);
+
+    -- Phase O: Consistent Database Backups Catalog
+    CREATE TABLE IF NOT EXISTS database_backups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      filename TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      file_hash TEXT,
+      status TEXT DEFAULT 'valid',
+      created_by TEXT DEFAULT 'system',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- ==========================================
+    -- Multi-Agent Autonomous Operations & Support
+    -- ==========================================
+    CREATE TABLE IF NOT EXISTS support_conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      status TEXT CHECK(status IN ('OPEN', 'AI_HANDLING', 'WAITING_USER', 'WAITING_ADMIN', 'ADMIN_HANDLING', 'RESOLVED', 'CLOSED')) DEFAULT 'AI_HANDLING',
+      priority TEXT CHECK(priority IN ('P1', 'P2', 'P3', 'P4')) DEFAULT 'P3',
+      mode TEXT CHECK(mode IN ('AI', 'HUMAN')) DEFAULT 'AI',
+      subject TEXT,
+      assigned_admin_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_message_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (assigned_admin_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_support_conv_user ON support_conversations(user_id);
+    CREATE INDEX IF NOT EXISTS idx_support_conv_status ON support_conversations(status);
+    CREATE INDEX IF NOT EXISTS idx_support_conv_mode ON support_conversations(mode);
+    CREATE INDEX IF NOT EXISTS idx_support_conv_last_msg ON support_conversations(last_message_at);
+
+    CREATE TABLE IF NOT EXISTS support_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL,
+      sender_type TEXT CHECK(sender_type IN ('USER', 'AI', 'ADMIN', 'SYSTEM')) NOT NULL,
+      sender_user_id INTEGER,
+      message TEXT NOT NULL,
+      metadata TEXT, -- JSON com cards de catálogo, diagnósticos, etc.
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      read_at DATETIME,
+      FOREIGN KEY (conversation_id) REFERENCES support_conversations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_support_msg_conv ON support_messages(conversation_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_support_msg_unread ON support_messages(conversation_id, read_at);
+
+    CREATE TABLE IF NOT EXISTS support_diagnostics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL,
+      snapshot_json TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (conversation_id) REFERENCES support_conversations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_support_diag_conv ON support_diagnostics(conversation_id);
+
+    CREATE TABLE IF NOT EXISTS agent_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent TEXT NOT NULL, -- 'SentinelAgent', 'SecurityAgent', 'SupportAgent'
+      trigger TEXT NOT NULL,
+      started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      finished_at DATETIME,
+      status TEXT CHECK(status IN ('running', 'success', 'recovered', 'escalated', 'failed', 'blocked')) DEFAULT 'running',
+      actions_count INTEGER DEFAULT 0,
+      result TEXT,
+      correlation_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent, created_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_corr ON agent_runs(correlation_id);
+
+    CREATE TABLE IF NOT EXISTS agent_global_incidents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      incident_code TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      source TEXT NOT NULL,
+      affected_count INTEGER DEFAULT 1,
+      status TEXT CHECK(status IN ('ACTIVE', 'INVESTIGATING', 'MITIGATED', 'RESOLVED')) DEFAULT 'ACTIVE',
+      details TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      resolved_at DATETIME
+    );
+    CREATE INDEX IF NOT EXISTS idx_global_incidents_status ON agent_global_incidents(status);
+  `);
+
+  // Ensure default agent system settings exist
+  const insertDefaultSetting = db.prepare("INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)");
+  insertDefaultSetting.run('sentinel_auto_heal', 'true');
+  insertDefaultSetting.run('security_auto_action', 'true');
+  insertDefaultSetting.run('ai_support_enabled', 'true');
+  insertDefaultSetting.run('vsairouter_url', process.env.VSAIROUTER_URL || 'http://localhost:8000/v1');
+  insertDefaultSetting.run('vsairouter_model', process.env.VSAIROUTER_MODEL || 'default');
 
   seedData();
 }

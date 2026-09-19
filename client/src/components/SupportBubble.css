@@ -1,0 +1,420 @@
+/* VSAIPTV Intelligent Support Bubble & Floating Window */
+.vsa-support-bubble {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
+  color: #ffffff;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 990;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.vsa-support-bubble:hover {
+  transform: scale(1.08) translateY(-2px);
+  box-shadow: 0 12px 30px rgba(6, 182, 212, 0.55);
+}
+
+.vsa-support-bubble:active {
+  transform: scale(0.96);
+}
+
+/* Badge de mensagens não lidas */
+.vsa-bubble-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #0d111d;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.6);
+  animation: pulseBadge 2s infinite;
+}
+
+@keyframes pulseBadge {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+/* Janela Flutuante de Atendimento */
+.vsa-support-window {
+  position: fixed;
+  bottom: 90px;
+  right: 28px;
+  width: 380px;
+  max-width: calc(100vw - 40px);
+  height: 540px;
+  max-height: calc(100vh - 120px);
+  background: rgba(13, 17, 29, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.65), 0 0 20px rgba(99, 102, 241, 0.15);
+  backdrop-filter: blur(16px);
+  z-index: 991;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: windowSlideUp 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes windowSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Cabeçalho */
+.vsa-support-header {
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.vsa-header-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vsa-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.vsa-mode-ai {
+  background: rgba(6, 182, 212, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.vsa-mode-human {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.vsa-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vsa-header-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.vsa-header-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+/* Chips de Início Rápido */
+.vsa-quick-chips {
+  padding: 10px 14px;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.vsa-quick-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.vsa-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  padding: 5px 10px;
+  border-radius: 14px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.vsa-chip:hover {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: #6366f1;
+  color: #ffffff;
+}
+
+/* Área de Mensagens */
+.vsa-messages-area {
+  flex: 1;
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vsa-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 86%;
+}
+
+.vsa-msg-user {
+  align-self: flex-end;
+}
+
+.vsa-msg-ai, .vsa-msg-admin, .vsa-msg-system {
+  align-self: flex-start;
+}
+
+.vsa-msg-bubble {
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.vsa-msg-user .vsa-msg-bubble {
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+  color: #ffffff;
+  border-bottom-right-radius: 4px;
+}
+
+.vsa-msg-ai .vsa-msg-bubble {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom-left-radius: 4px;
+}
+
+.vsa-msg-admin .vsa-msg-bubble {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fef3c7;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-bottom-left-radius: 4px;
+}
+
+.vsa-msg-system .vsa-msg-bubble {
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
+  font-size: 0.76rem;
+  text-align: center;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  align-self: center;
+}
+
+.vsa-msg-time {
+  font-size: 0.65rem;
+  color: #64748b;
+  margin-top: 4px;
+  padding: 0 4px;
+}
+
+/* Cards de Conteúdo (Resultado de Busca) */
+.vsa-content-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 8px;
+  margin-top: 8px;
+  transition: all 0.2s;
+}
+
+.vsa-content-card:hover {
+  border-color: #38bdf8;
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.vsa-card-poster {
+  width: 44px;
+  height: 60px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #1e293b;
+}
+
+.vsa-card-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vsa-card-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #f8fafc;
+  line-height: 1.2;
+}
+
+.vsa-card-sub {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.vsa-card-watch-btn {
+  background: #0284c7;
+  color: #ffffff;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.vsa-card-watch-btn:hover {
+  background: #0369a1;
+}
+
+/* Card de Diagnóstico e Recuperação */
+.vsa-repair-card {
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vsa-repair-btn {
+  background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
+  color: #ffffff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: opacity 0.2s;
+}
+
+.vsa-repair-btn:hover {
+  opacity: 0.92;
+}
+
+/* Rodapé / Input de Mensagem */
+.vsa-support-input-bar {
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.4);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vsa-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #f8fafc;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.vsa-input:focus {
+  border-color: #6366f1;
+}
+
+.vsa-send-btn {
+  background: #4f46e5;
+  color: #ffffff;
+  border: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.vsa-send-btn:hover:not(:disabled) {
+  background: #4338ca;
+  transform: scale(1.05);
+}
+
+.vsa-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Indicador de Digitação */
+.vsa-typing-indicator {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-style: italic;
+  padding: 4px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Responsividade Mobile */
+@media (max-width: 640px) {
+  .vsa-support-bubble {
+    bottom: 74px;
+    right: 18px;
+  }
+  .vsa-support-window {
+    right: 12px;
+    bottom: 135px;
+    width: calc(100vw - 24px);
+    height: 480px;
+  }
+}

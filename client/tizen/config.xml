@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="http://vsaiptv.com/VSAIPTV" version="1.0.0" viewmodes="fullscreen">
+    <access origin="*" subdomains="true"/>
+    <tizen:application id="VSAIPTV.SmartTV" exec="index.html" screen-orientation="landscape" required_version="3.0"/>
+    <name>VSAIPTV</name>
+    <description>VSAIPTV Universal Smart TV Client</description>
+    <icon src="icon.png"/>
+    
+    <!-- Privilégios Samsung Tizen TV -->
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/avplay"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
+    
+    <tizen:profile name="tv"/>
+    <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto"/>
+</widget>

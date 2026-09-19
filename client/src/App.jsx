@@ -3,20 +3,35 @@ import Navbar from './components/Navbar';
 import LoginView from './views/LoginView';
 import { ProgressProvider } from './hooks/useProgress';
 import { FavoritesProvider } from './hooks/useFavorites';
+import { useSpatialNav } from './hooks/useSpatialNav';
+import { TVModeProvider } from './tv/TVModeContext';
+import TVOverlayDiagnostics from './tv/TVOverlayDiagnostics';
+import './tv/tv.css';
 import api from './services/api';
+import SupportBubble from './components/SupportBubble';
 
 const MasterDashboard = lazy(() => import('./views/MasterDashboard'));
 const ResellerDashboard = lazy(() => import('./views/ResellerDashboard'));
 const ClientWebPlayer = lazy(() => import('./views/ClientWebPlayer'));
 
 export default function App() {
+  useSpatialNav({ enabled: true });
+
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('iptv_user');
     return saved ? JSON.parse(saved) : null;
   });
 
   const [clientTab, setClientTab] = useState('home');
+  const [activeView, setActiveView] = useState(() => {
+    return localStorage.getItem('iptv_active_view') || 'dashboard';
+  });
   const [loading, setLoading] = useState(true);
+
+  const handleToggleView = (view) => {
+    setActiveView(view);
+    localStorage.setItem('iptv_active_view', view);
+  };
 
   // Validate session on load
   useEffect(() => {
@@ -74,45 +89,73 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return <LoginView onLoginSuccess={(loggedInUser) => setUser(loggedInUser)} />;
-  }
+  const effectiveView = user?.role === 'client' ? 'player' : activeView;
 
   return (
-    <ProgressProvider>
-      <FavoritesProvider>
-        <div style={{ minHeight: '100vh', background: 'var(--bg-main)' }}>
-          <Navbar 
-            user={user} 
-            onLogout={handleLogout} 
-            activeTab={clientTab} 
-            onTabChange={setClientTab} 
-          />
-          <main>
-            <Suspense fallback={
-              <div style={{
-                minHeight: '60vh',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#818cf8',
-              }}>
-                <div className="vp-spinner" style={{ width: '40px', height: '40px' }} />
-              </div>
-            }>
-              {user.role === 'master' && <MasterDashboard user={user} />}
-              {user.role === 'reseller' && <ResellerDashboard user={user} />}
-              {user.role === 'client' && (
-                <ClientWebPlayer 
-                  user={user} 
-                  activeTab={clientTab} 
-                  onTabChange={setClientTab} 
-                />
-              )}
-            </Suspense>
-          </main>
-        </div>
-      </FavoritesProvider>
-    </ProgressProvider>
+    <TVModeProvider>
+      <TVOverlayDiagnostics />
+      {!user || user.must_change_password ? (
+        <LoginView onLoginSuccess={(loggedInUser) => setUser(loggedInUser)} />
+      ) : (
+        <ProgressProvider>
+          <FavoritesProvider>
+            <div style={{ minHeight: '100vh', background: 'var(--bg-main)' }}>
+              <Navbar 
+                user={user} 
+                onLogout={handleLogout} 
+                activeTab={clientTab} 
+                onTabChange={setClientTab}
+                currentView={effectiveView}
+                onToggleView={handleToggleView}
+              />
+              <main>
+                <Suspense fallback={
+                  <div style={{
+                    minHeight: '60vh',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#818cf8',
+                  }}>
+                    <div className="vp-spinner" style={{ width: '40px', height: '40px' }} />
+                  </div>
+                }>
+                  {user.role === 'master' && (
+                    effectiveView === 'player' ? (
+                      <ClientWebPlayer 
+                        user={user} 
+                        activeTab={clientTab} 
+                        onTabChange={setClientTab} 
+                      />
+                    ) : (
+                      <MasterDashboard user={user} onOpenPlayer={() => handleToggleView('player')} />
+                    )
+                  )}
+                  {user.role === 'reseller' && (
+                    effectiveView === 'player' ? (
+                      <ClientWebPlayer 
+                        user={user} 
+                        activeTab={clientTab} 
+                        onTabChange={setClientTab} 
+                      />
+                    ) : (
+                      <ResellerDashboard user={user} onOpenPlayer={() => handleToggleView('player')} />
+                    )
+                  )}
+                  {user.role === 'client' && (
+                    <ClientWebPlayer 
+                      user={user} 
+                      activeTab={clientTab} 
+                      onTabChange={setClientTab} 
+                    />
+                  )}
+                </Suspense>
+              </main>
+              <SupportBubble user={user} currentRoute={clientTab} />
+            </div>
+          </FavoritesProvider>
+        </ProgressProvider>
+      )}
+    </TVModeProvider>
   );
 }

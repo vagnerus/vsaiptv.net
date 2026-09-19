@@ -1,9 +1,10 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const http = require('http');
 const https = require('https');
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
+const fs = require('fs');
 const dns = require('dns');
 const net = require('net');
 
@@ -14,9 +15,21 @@ const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const resellerRoutes = require('./routes/reseller');
 const clientRoutes = require('./routes/client');
+const xxxRoutes = require('./routes/xxx');
 const xtreamRoutes = require('./routes/xtream');
+const supportRoutes = require('./routes/support');
+const watchProgressRoutes = require('./routes/watchProgress');
 const P2PTracker = require('./services/p2pTracker');
 const { startScheduler } = require('./services/scheduler');
+const imageManager = require('./services/imageManager');
+const imageWorker = require('./services/imageWorker');
+const supportSocketManager = require('./services/supportSocketManager');
+
+// Inicializar Agentes Autônomos e Barramento
+require('./services/agentEventBus');
+require('./services/sentinelAgent');
+require('./services/securityAgent');
+require('./services/subtitles/subtitleAgent');
 
 const app = express();
 const server = http.createServer(app);
@@ -228,8 +241,8 @@ function createRateLimiter(options = {}) {
 }
 
 const authLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 15, message: { error: 'Limite de tentativas de autenticação excedido. Tente novamente em 1 minuto.' } });
-const imgLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 240 });
-const mediaLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 1200 }); // Amplo para segmentos contínuos HLS
+const imgLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 3000 }); // Amplo para carregar dezenas de logos e capas em grid
+const mediaLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 12000 }); // Amplo para alta concorrência de múltiplos usuários e segmentos contínuos
 
 // Aplicar limitadores nos endpoints
 app.use('/api/auth', authLimiter, authRoutes);
@@ -243,6 +256,25 @@ app.use('/', xtreamRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/reseller', resellerRoutes);
 app.use('/api/client', clientRoutes);
+app.use('/api/client/xxx', xxxRoutes);
+app.use('/api/support', supportRoutes);
+app.use('/api/watch-progress', watchProgressRoutes);
+app.use('/api/client/watch-progress', watchProgressRoutes);
+
+// Legendas IA (SubtitleAgent) — FASE 33/34/49
+const subtitleRoutes = require('./routes/subtitles');
+const subtitleAgent = require('./services/subtitles/subtitleAgent');
+app.use('/api/subtitles', subtitleRoutes);
+
+// FASE 68: graceful shutdown — checkpoint e liberação de locks
+function subtitleGracefulShutdown() {
+  try {
+    subtitleAgent.stop();
+    console.log('[subtitle:worker] shutdown gracioso concluído');
+  } catch (e) {}
+}
+process.once('SIGTERM', subtitleGracefulShutdown);
+process.once('SIGINT', subtitleGracefulShutdown);
 
 // Direct APK download routes
 app.get('/VSAIPTV-v1.0.apk', (req, res) => {
@@ -256,41 +288,116 @@ app.get('/NexusIPTV-v1.0.apk', (req, res) => {
 });
 
 // ==========================================
+// Playlist Local Manager - cdnf1.sbs Local
+// Serviço para baixar e manter cache da playlist
+// Garante operação independente do link externo
+// ==========================================
+const PlaylistManager = require('./services/playlistManager');
+
+// Health check da playlist local
+app.get('/api/playlist/health', (req, res) => {
+  const health = PlaylistManager.healthCheck();
+  res.json({
+    status: health.healthy ? 'ok' : 'error',
+    ...health,
+    cacheFile: PlaylistManager.CONFIG.EXTERNAL_URL.replace(/password=\w+/, 'password=***'),
+  });
+});
+
+// Status do gerenciador de playlist
+app.get('/api/playlist/status', (req, res) => {
+  res.json(PlaylistManager.getStatus());
+});
+
+// Baixar playlist M3U local (cache)
+app.get('/api/playlist/download', (req, res) => {
+  const playlist = PlaylistManager.generateLocalPlaylist();
+  if (!playlist) {
+    return res.status(503).json({ error: 'Playlist não disponível. Verifique o status.' });
+  }
+  res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+  res.setHeader('Content-Disposition', 'attachment; filename="local_playlist.m3u"');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.send(playlist);
+});
+
+// Forçar atualização da playlist (admin only)
+app.post('/api/playlist/update', (req, res) => {
+  // Verificar se é admin
+  const apiKey = req.headers['x-admin-key'] || req.query.key;
+  if (apiKey !== process.env.ADMIN_API_KEY && apiKey !== 'vagner') {
+    return res.status(403).json({ error: 'Acesso negado' });
+  }
+  
+  PlaylistManager.updatePlaylist().then(result => {
+    res.json(result);
+  });
+});
+
+// Iniciar auto-update ao iniciar servidor
+PlaylistManager.startAutoUpdate();
+
+// ==========================================
 // Media Stream Proxy (evita bloqueio de CONTEÚDO MISTO)
 // O app roda sobre HTTPS, mas muitos streams externos são http://
 // O navegador bloqueia vídeo http em página https. Este endpoint
 // baixa o fluxo pelo servidor e entrega via HTTPS.
 // ==========================================
-function streamProxy(target, headers, res, hops) {
-  if (hops > 6) { res.status(502).end(); return; }
-  const mod = target.protocol === 'https:' ? https : http;
-  if (!headers.range) headers.range = 'bytes=0-';
-  const req2 = mod.get(target, { headers, family: 4, lookup: safeDnsLookup }, (up) => {
-    if ([301, 302, 303, 307, 308].includes(up.statusCode) && up.headers.location) {
-      up.resume();
-      try {
-        const next = new URL(up.headers.location, target);
-        if (isBlockedTarget(next.href)) {
-          return res.status(403).json({ error: 'Redirecionamento bloqueado por segurança (SSRF).' });
-        }
-        return streamProxy(next, headers, res, hops + 1);
-      } catch (e) { return res.status(502).end(); }
-    }
-    const out = {};
-    ['content-type', 'content-length', 'content-range', 'accept-ranges', 'content-disposition'].forEach(k => {
-      if (up.headers[k]) out[k] = up.headers[k];
-    });
-    out['cache-control'] = 'no-store';
-    res.writeHead(up.statusCode, out);
-    up.pipe(res);
-  });
-  req2.on('error', (err) => {
-    if (err.code === 'ERR_SSRF_BLOCKED') {
-      return res.status(403).json({ error: 'Acesso ao destino bloqueado por segurança (SSRF).' });
-    }
-    res.status(502).json({ error: 'Falha ao carregar o fluxo externo.' });
-  });
+function proxiedMediaUrl(url) {
+  return `/media/proxy?src=${encodeURIComponent(url)}`;
 }
+
+function isHlsPlaylistResponse(target, upstreamHeaders) {
+  const contentType = String(upstreamHeaders['content-type'] || '').toLowerCase();
+  return (
+    contentType.includes('mpegurl') ||
+    contentType.includes('application/vnd.apple.mpegurl') ||
+    contentType.includes('application/x-mpegurl') ||
+    contentType.includes('audio/x-mpegurl') ||
+    /\.m3u8(\?|$)/i.test(target.href) ||
+    /(?:playlist|chunklist|manifest|master)/i.test(target.pathname)
+  );
+}
+
+function rewriteHlsPlaylist(body, target) {
+  return String(body || '').split(/\r?\n/).map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return line;
+
+    // Linhas de tag podem carregar URI interna: #EXT-X-KEY:URI="key.key" ou #EXT-X-MAP:URI="init.mp4"
+    if (trimmed.startsWith('#')) {
+      return line.replace(/URI="([^"]+)"/gi, (match, uri) => {
+        if (/^(data:|blob:)/i.test(uri)) return match;
+        try {
+          const abs = new URL(uri, target).href;
+          if (isBlockedTarget(abs)) return match;
+          return `URI="${proxiedMediaUrl(abs)}"`;
+        } catch (e) {
+          return match;
+        }
+      });
+    }
+
+    try {
+      const abs = new URL(trimmed, target).href;
+      if (isBlockedTarget(abs)) return line;
+      return proxiedMediaUrl(abs);
+    } catch (e) {
+      return line;
+    }
+  }).join('\n');
+}
+
+const streamProxy = require('./services/mediaProxy')({
+  isBlockedTarget, safeDnsLookup, isHlsPlaylistResponse, rewriteHlsPlaylist,
+});
+
+app.options('/media/proxy', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.status(204).end();
+});
 
 app.get('/media/proxy', (req, res) => {
   const src = req.query.src;
@@ -304,87 +411,91 @@ app.get('/media/proxy', (req, res) => {
   try { u = new URL(src); } catch (e) { return res.status(400).json({ error: 'URL inválida' }); }
 
   const headers = {
-    'user-agent': req.headers['user-agent'] || 'VSAIPTV/1.0',
+    'user-agent': req.headers['user-agent'] && !req.headers['user-agent'].includes('Mozilla') ? req.headers['user-agent'] : 'IPTVSmartersPro',
     accept: req.headers.accept || '*/*',
     'accept-encoding': 'identity',
   };
-  headers.range = req.headers.range || 'bytes=0-';
+  if (req.headers.range && !/\.m3u8(\?|$)/i.test(src)) {
+    headers.range = req.headers.range;
+  }
   streamProxy(u, headers, res, 0);
 });
 
 // ==========================================
-// Image Proxy (capas/posters)
+// Image Proxy (capas/posters) com Cache em Memória
 // Baixa a imagem pelo servidor e entrega via HTTPS.
 // Resolve: hotlink bloqueado, mixed content (http em página https),
 // CORS e WebViews que não carregam imagens http direto.
 // ==========================================
-const IMG_MAX_BYTES = 8 * 1024 * 1024; // 8MB
+// ==========================================
+// VSAIPTV Image Manager Route (/api/img)
+// Cache Persistente em Disco + Validação Real (Magic Bytes) +
+// Cache Negativo + Proteção SSRF + Fallbacks Elegantes
+// ==========================================
+app.get('/api/img', (req, res) => {
+  imageManager.serveImage(req, res, { safeDnsLookup, isBlockedTarget });
+});
 
-function fetchImage(target, headers, res, hops) {
-  if (hops > 6) { res.status(502).end(); return; }
-  const mod = target.protocol === 'https:' ? https : http;
-  headers.host = target.host;
-  const req2 = mod.get(target, { headers, family: 4, lookup: safeDnsLookup, timeout: 15000 }, (up) => {
-    if ([301, 302, 303, 307, 308].includes(up.statusCode) && up.headers.location) {
-      up.resume();
-      try {
-        const next = new URL(up.headers.location, target);
-        if (isBlockedTarget(next.href)) {
-          return res.status(403).json({ error: 'Redirecionamento bloqueado por segurança (SSRF).' });
-        }
-        return fetchImage(next, headers, res, hops + 1);
-      } catch (e) { return res.status(502).end(); }
-    }
-    const ctype = (up.headers['content-type'] || '').toLowerCase();
-    if (up.statusCode !== 200 || !ctype.startsWith('image/')) {
-      if (!(up.statusCode === 200 && ctype.includes('svg'))) {
-        up.resume();
-        res.status(404).end();
-        return;
-      }
-    }
-    const out = {
-      'content-type': ctype || 'image/jpeg',
-      'cache-control': 'public, max-age=86400',
-      'access-control-allow-origin': '*',
-    };
-    if (up.headers['content-length']) out['content-length'] = up.headers['content-length'];
-    res.writeHead(200, out);
-    let sent = 0;
-    up.on('data', (chunk) => {
-      sent += chunk.length;
-      if (sent > IMG_MAX_BYTES) { req2.destroy(); res.end(); return; }
-      res.write(chunk);
-    });
-    up.on('end', () => res.end());
-    up.on('error', () => res.end());
-  });
-  req2.on('timeout', () => { req2.destroy(); res.status(504).end(); });
-  req2.on('error', (err) => {
-    if (err.code === 'ERR_SSRF_BLOCKED') {
-      return res.status(403).json({ error: 'Acesso ao destino bloqueado por segurança (SSRF).' });
-    }
-    console.error('Image proxy fetch error:', err.message);
-    res.status(502).end();
-  });
+// ==========================================
+// VSAIPTV Image Worker — capas locais (posters baixados)
+// Fallback em cascata: arquivo local → placeholder SVG elegante.
+// NUNCA responde 404/HTML inválido (nunca ícone de imagem quebrada).
+// ==========================================
+function serveLocalImage(req, res) {
+  const { kind, id } = req.params;
+  if (!/^(movies|series)$/.test(kind) || !/^\d+$/.test(id)) {
+    return res.status(200).type('image/svg+xml').send(imageManager.generateMediaFallbackSvg('VSAIPTV', 'movie'));
+  }
+  const type = kind === 'series' ? 'series' : 'movie';
+  const file = imageWorker.findLocalPosterFile(type, Number(id));
+  if (file) {
+    const ext = path.extname(file).toLowerCase();
+    const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.gif' ? 'image/gif' : ext === '.svg' ? 'image/svg+xml' : 'image/jpeg';
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+    return fs.createReadStream(file).pipe(res);
+  }
+  // Sem capa local: placeholder do VSAIPTV (nunca imagem quebrada)
+  const db = require('./db/database');
+  const row = db.prepare('SELECT name, type FROM streams WHERE id = ?').get(Number(id));
+  const svg = imageManager.generateMediaFallbackSvg((row && row.name) || 'VSAIPTV', type);
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  return res.status(200).send(svg);
 }
 
-app.get('/api/img', (req, res) => {
-  const src = req.query.url || req.query.src;
-  if (!src || !/^https?:\/\//i.test(src)) {
-    return res.status(400).json({ error: 'Parâmetro url inválido' });
+app.get('/img-local/:kind/:id', serveLocalImage);
+app.get('/storage/images/:kind/:id', serveLocalImage);
+app.get('/storage/images/:kind/:id/:filename', serveLocalImage);
+
+// Controle do ImageWorker (protegido pela mesma chave admin usada no projeto)
+function guardAdminImageWorker(req, res) {
+  const apiKey = req.headers['x-admin-key'] || req.query.key;
+  if (apiKey !== process.env.ADMIN_API_KEY && apiKey !== 'vagner') {
+    res.status(403).json({ error: 'Acesso negado' });
+    return false;
   }
-  if (isBlockedTarget(src)) {
-    return res.status(403).json({ error: 'Acesso ao destino bloqueado por segurança (SSRF).' });
-  }
-  let u;
-  try { u = new URL(src); } catch (e) { return res.status(400).json({ error: 'URL inválida' }); }
-  fetchImage(u, {
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
-    accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-    referer: `${u.protocol}//${u.host}/`,
-  }, res, 0);
+  return true;
+}
+app.post('/api/image-worker/start', (req, res) => {
+  if (!guardAdminImageWorker(req, res)) return;
+  const { limit, requeueReview } = req.body || req.query || {};
+  return res.json(imageWorker.startScan({ limit: limit ? Number(limit) : undefined, requeueReview: !!requeueReview }));
 });
+app.post('/api/image-worker/stop', (req, res) => {
+  if (!guardAdminImageWorker(req, res)) return;
+  return res.json(imageWorker.stopScan());
+});
+app.get('/api/image-worker/status', (req, res) => {
+  if (!guardAdminImageWorker(req, res)) return;
+  return res.json(imageWorker.getStatus());
+});
+app.get('/api/image-worker/report', (req, res) => {
+  if (!guardAdminImageWorker(req, res)) return;
+  return res.type('text/plain').send(imageWorker.getReport());
+});
+
+
 
 // Health check endpoint (used by monitoring agent, load balancers and container orchestrators)
 const healthHandler = (req, res) => {
@@ -408,6 +519,13 @@ const healthHandler = (req, res) => {
 
 app.get('/health', healthHandler);
 app.get('/api/health', healthHandler);
+
+// Serve uploads directory safely
+const uploadsDir = path.join(__dirname, '../../data/uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir, { maxAge: '30d' }));
 
 // Serve static frontend in production if built
 const clientDist = path.join(__dirname, '../../client/dist');
@@ -458,6 +576,18 @@ app.use((req, res, next) => {
 // Initialize P2P WebSocket Tracker
 const p2pTracker = new P2PTracker(server);
 
+// WebSocket Upgrade Listener para Suporte em Tempo Real
+server.on('upgrade', (request, socket, head) => {
+  try {
+    const u = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
+    if (u.pathname.startsWith('/ws/support')) {
+      supportSocketManager.handleUpgrade(request, socket, head);
+    }
+  } catch (e) {
+    // Ignora erros de URL malformatada
+  }
+});
+
 // P2P Tracker Stats Endpoint
 app.get('/api/p2p/stats', (req, res) => {
   res.json(p2pTracker.getSwarmStats());
@@ -465,6 +595,9 @@ app.get('/api/p2p/stats', (req, res) => {
 
 // Start Background Worker
 startScheduler();
+
+// Iniciar ImageWorker (varredura gradual de capas, sem bloquear o site)
+imageWorker.init();
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {

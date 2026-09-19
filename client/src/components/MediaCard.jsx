@@ -1,6 +1,6 @@
-import React from 'react';
-import { Play, Star } from 'lucide-react';
-import { getImageUrl, getPlaceholder, onImageError, extractRealResolution } from '../utils/streamUtils';
+import React, { useState } from 'react';
+import { Play, Star, Tv, Film, Clapperboard } from 'lucide-react';
+import { getImageUrl, getPlaceholder, extractRealResolution } from '../utils/streamUtils';
 import { useFavorites } from '../hooks/useFavorites';
 
 export default function MediaCard({
@@ -9,6 +9,7 @@ export default function MediaCard({
   onPlayDirect,
   isPlaying = false,
 }) {
+  const [imgError, setImgError] = useState(false);
   const { isFavorite, toggleFavorite } = useFavorites();
   const isFav = isFavorite(item?.id);
   const isLive = item?.type === 'live' || item?.stream_type === 'live';
@@ -16,19 +17,30 @@ export default function MediaCard({
   const title = item?.name || item?.title || 'Conteúdo';
   const realRes = extractRealResolution(title);
 
+  const isSeries = item?.type === 'series' || item?.category_name?.toLowerCase().includes('novela') || item?.category_id === 147;
+  const isNovela = item?.category_name?.toLowerCase().includes('novela') || item?.category_id === 147;
+
   const handleFavClick = (e) => {
     e.stopPropagation();
     toggleFavorite(item);
   };
 
   const handlePlayClick = (e) => {
-    if (onPlayDirect) {
-      e.stopPropagation();
+    e.stopPropagation();
+    if (isSeries) {
+      onClick?.(item);
+    } else if (onPlayDirect) {
       onPlayDirect(item);
     } else {
       onClick?.(item);
     }
   };
+
+  // Cores determinísticas para o fallback
+  let nameHash = 0;
+  for (let i = 0; i < title.length; i++) nameHash = title.charCodeAt(i) + ((nameHash << 5) - nameHash);
+  const hue1 = Math.abs(nameHash % 360);
+  const hue2 = (hue1 + 45) % 360;
 
   if (isLive) {
     return (
@@ -46,13 +58,48 @@ export default function MediaCard({
         }}
       >
         <div className="media-card-live-thumb">
-          <img
-            src={poster || getPlaceholder(item)}
-            alt={title}
-            className="media-card-live-logo"
-            loading="lazy"
-            onError={(e) => onImageError(e, item)}
-          />
+          {!imgError && poster ? (
+            <img
+              src={poster}
+              alt=""
+              className="media-card-live-logo"
+              loading="lazy"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                setImgError(true);
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: `linear-gradient(135deg, hsl(${hue1}, 45%, 12%), hsl(${hue2}, 55%, 6%))`,
+                padding: '12px',
+                textAlign: 'center',
+              }}
+            >
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                background: 'rgba(255,255,255,0.08)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '6px',
+              }}>
+                <Tv size={18} color="#818cf8" />
+              </div>
+              <span style={{ fontSize: '0.78rem', fontWeight: '700', color: '#f8fafc', lineHeight: 1.2 }}>
+                {title.length > 24 ? title.substring(0, 22) + '..' : title}
+              </span>
+            </div>
+          )}
 
           {/* Live Indicator Badge */}
           <span className="card-live-indicator">
@@ -104,8 +151,6 @@ export default function MediaCard({
   }
 
   // VOD: Movies, Series & Novelas (Poster 2:3)
-  const isSeries = item?.type === 'series' || item?.category_name?.toLowerCase().includes('novela');
-  const isNovela = item?.category_name?.toLowerCase().includes('novela');
   const year = item?.release_date ? String(item.release_date).slice(0, 4) : null;
   const episodesCount = item?.episode_count || item?.total_episodes;
 
@@ -124,13 +169,53 @@ export default function MediaCard({
       }}
     >
       <div className="media-card-poster-wrap">
-        <img
-          src={poster || getPlaceholder(item)}
-          alt={title}
-          className="media-card-poster-img"
-          loading="lazy"
-          onError={(e) => onImageError(e, item)}
-        />
+        {!imgError && poster ? (
+          <img
+            src={poster}
+            alt=""
+            className="media-card-poster-img"
+            loading="lazy"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              setImgError(true);
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'linear-gradient(135deg, #181e2e, #0c121e)',
+              padding: '16px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              background: isSeries ? 'rgba(99, 102, 241, 0.15)' : 'rgba(236, 72, 153, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '10px',
+            }}>
+              {isSeries ? <Clapperboard size={22} color="#818cf8" /> : <Film size={22} color="#f43f5e" />}
+            </div>
+            <span style={{ fontSize: '0.86rem', fontWeight: '700', color: '#f8fafc', lineHeight: 1.3 }}>
+              {title.length > 28 ? title.substring(0, 25) + '..' : title}
+            </span>
+            {year && (
+              <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px' }}>
+                {year}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Favorite Button */}
         <button

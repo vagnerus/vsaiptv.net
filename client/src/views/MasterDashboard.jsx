@@ -3,16 +3,32 @@ import api from '../services/api';
 import { 
   Activity, Users, Tv, ShieldAlert, Settings, FileText, 
   Plus, Edit, Trash2, Coins, ArrowRightLeft, Radio, 
-  Wifi, Cpu, HardDrive, RefreshCw, X, Check, Copy, AlertCircle, UploadCloud
+  Wifi, Cpu, HardDrive, RefreshCw, X, Check, Copy, AlertCircle, UploadCloud,
+  Image, HeartPulse, Menu, ExternalLink, Smartphone, FolderTree
 } from 'lucide-react';
 
-export default function MasterDashboard({ user }) {
-  const [activeTab, setActiveTab] = useState('telemetry'); // telemetry, resellers, clients, catalog, firewall, reports, settings
+import MasterSidebar from '../components/admin/MasterSidebar';
+import MasterDashboardHome from '../components/admin/MasterDashboardHome';
+import MasterCatalogView from '../components/admin/MasterCatalogView';
+import MasterClientsView from '../components/admin/MasterClientsView';
+import HealthCenterView from '../components/admin/HealthCenterView';
+import ImageManagerView from '../components/admin/ImageManagerView';
+import StreamMonitorView from '../components/admin/StreamMonitorView';
+import MasterEpgView from '../components/admin/MasterEpgView';
+import MasterBackupView from '../components/admin/MasterBackupView';
+import MasterSupportInbox from '../components/admin/MasterSupportInbox';
+import MasterAgentsObservability from '../components/admin/MasterAgentsObservability';
+import MasterSubtitlesView from '../components/admin/MasterSubtitlesView';
+
+export default function MasterDashboard({ user, onLogout }) {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // States
   const [telemetry, setTelemetry] = useState(null);
   const [connections, setConnections] = useState([]);
   const [resellers, setResellers] = useState([]);
-  const [clients, setClients] = useState([]);
-  const [streams, setStreams] = useState([]);
   const [categories, setCategories] = useState([]);
   const [firewallRules, setFirewallRules] = useState([]);
   const [reports, setReports] = useState(null);
@@ -24,24 +40,21 @@ export default function MasterDashboard({ user }) {
 
   // Modals
   const [modalReseller, setModalReseller] = useState(false);
-  const [modalCredits, setModalCredits] = useState(null); // reseller object
-  const [modalStream, setModalStream] = useState(false);
-  const [modalM3UImport, setModalM3UImport] = useState(false);
-  const [modalTransfer, setModalTransfer] = useState(null); // client object
+  const [modalCredits, setModalCredits] = useState(null);
   const [modalFirewall, setModalFirewall] = useState(false);
-  const [modalLinks, setModalLinks] = useState(null); // client object for M3U links
+  const [modalCategory, setModalCategory] = useState(false);
 
-  // Form states
+  // Forms
   const [resellerForm, setResellerForm] = useState({ username: '', password: '', name: '', email: '', phone: '', credits: 10 });
   const [creditForm, setCreditForm] = useState({ amount: 10, reason: 'Recarga administrativa' });
-  const [streamForm, setStreamForm] = useState({ name: '', type: 'live', category_id: '', stream_url: '', icon_url: '', description: '' });
+  const [categoryForm, setCategoryForm] = useState({ name: '', type: 'live', order_num: 0 });
   const [m3uText, setM3uText] = useState('');
-  const [targetResellerId, setTargetResellerId] = useState('');
-  const [firewallForm, setFirewallForm] = useState({ ip_address: '', reason: 'Abuso de conexões' });
+  const [m3uPreview, setM3uPreview] = useState(null);
+  const [firewallForm, setFirewallForm] = useState({ ip_address: '', reason: 'Bloqueio administrativo' });
 
   const notify = (msg, type = 'success') => {
     setFeedback({ message: msg, type });
-    setTimeout(() => setFeedback({ message: '', type: '' }), 4000);
+    setTimeout(() => setFeedback({ message: '', type: '' }), 4500);
   };
 
   // Fetch telemetry & active connections
@@ -58,29 +71,17 @@ export default function MasterDashboard({ user }) {
     }
   };
 
-  // Fetch specific tab data
+  // Fetch tab-specific data
   const fetchData = async () => {
-    setLoading(true);
     try {
-      if (activeTab === 'telemetry') {
+      if (activeTab === 'telemetry' || activeTab === 'connections') {
         await fetchTelemetry();
       } else if (activeTab === 'resellers') {
         const res = await api.get('/api/admin/resellers');
         setResellers(res.data);
-      } else if (activeTab === 'clients') {
-        const [cRes, rRes] = await Promise.all([
-          api.get('/api/admin/clients'),
-          api.get('/api/admin/resellers')
-        ]);
-        setClients(cRes.data);
-        setResellers(rRes.data);
-      } else if (activeTab === 'catalog') {
-        const [sRes, catRes] = await Promise.all([
-          api.get('/api/admin/streams'),
-          api.get('/api/admin/categories')
-        ]);
-        setStreams(sRes.data);
-        setCategories(catRes.data);
+      } else if (activeTab === 'categories') {
+        const res = await api.get('/api/admin/categories');
+        setCategories(res.data);
       } else if (activeTab === 'firewall') {
         const res = await api.get('/api/admin/firewall');
         setFirewallRules(res.data);
@@ -91,14 +92,15 @@ export default function MasterDashboard({ user }) {
         ]);
         setReports(repRes.data);
         setAuditLogs(logRes.data);
+      } else if (activeTab === 'audit_logs') {
+        const logRes = await api.get('/api/admin/audit-logs');
+        setAuditLogs(logRes.data);
       } else if (activeTab === 'settings') {
         const res = await api.get('/api/admin/settings');
         setSettings(res.data);
       }
     } catch (err) {
       console.error(err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -106,26 +108,26 @@ export default function MasterDashboard({ user }) {
     fetchData();
   }, [activeTab]);
 
-  // Telemetry real-time polling every 6 seconds when on telemetry tab
   useEffect(() => {
-    if (activeTab === 'telemetry') {
-      const interval = setInterval(fetchTelemetry, 6000);
+    if (activeTab === 'telemetry' || activeTab === 'connections') {
+      const interval = setInterval(fetchTelemetry, 5000);
       return () => clearInterval(interval);
     }
   }, [activeTab]);
 
-  // Actions
+  // Kill connection
   const handleKillConnection = async (id) => {
-    if (!confirm('Deseja realmente derrubar esta transmissão ativa?')) return;
+    if (!window.confirm('Deseja realmente encerrar esta transmissão ativa?')) return;
     try {
       await api.delete(`/api/admin/connections/${id}`);
-      notify('Transmissão encerrada!');
+      notify('Transmissão encerrada com sucesso!');
       fetchTelemetry();
     } catch (err) {
-      notify('Erro ao derrubar conexão', 'error');
+      notify('Erro ao encerrar conexão', 'error');
     }
   };
 
+  // Resellers: Create
   const handleCreateReseller = async (e) => {
     e.preventDefault();
     try {
@@ -139,1226 +141,964 @@ export default function MasterDashboard({ user }) {
     }
   };
 
-  const handleUpdateCredits = async (e) => {
+  // Resellers: Adjust Credits
+  const handleAdjustCredits = async (e) => {
     e.preventDefault();
+    if (!modalCredits) return;
     try {
       await api.post(`/api/admin/resellers/${modalCredits.id}/credits`, creditForm);
-      notify('Créditos ajustados com sucesso!');
+      notify('Créditos atualizados e registrados no ledger com sucesso!');
       setModalCredits(null);
+      setCreditForm({ amount: 10, reason: 'Recarga administrativa' });
       fetchData();
     } catch (err) {
-      notify(err.response?.data?.error || 'Erro ao atualizar créditos', 'error');
+      notify(err.response?.data?.error || 'Erro ao ajustar créditos', 'error');
     }
   };
 
-  const handleTransferClient = async (e) => {
-    e.preventDefault();
-    if (!targetResellerId) return;
+  // Resellers: Toggle Status
+  const handleToggleResellerStatus = async (r) => {
     try {
-      await api.post('/api/admin/clients/transfer', {
-        clientId: modalTransfer.id,
-        targetResellerId,
-      });
-      notify('Cliente transferido com sucesso!');
-      setModalTransfer(null);
+      const newStatus = r.status === 'active' ? 'suspended' : 'active';
+      await api.put(`/api/admin/resellers/${r.id}`, { status: newStatus });
+      notify(`Revendedor ${newStatus === 'active' ? 'ativado' : 'suspenso'} com sucesso!`);
       fetchData();
     } catch (err) {
-      notify(err.response?.data?.error || 'Erro ao transferir cliente', 'error');
+      notify('Erro ao alterar status do revendedor', 'error');
     }
   };
 
-  const handleCreateStream = async (e) => {
+  // Categories: Create
+  const handleCreateCategory = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/api/admin/streams', streamForm);
-      notify('Conteúdo cadastrado com sucesso!');
-      setModalStream(false);
-      setStreamForm({ name: '', type: 'live', category_id: '', stream_url: '', icon_url: '', description: '' });
+      await api.post('/api/admin/categories', categoryForm);
+      notify('Categoria criada com sucesso!');
+      setModalCategory(false);
+      setCategoryForm({ name: '', type: 'live', order_num: 0 });
       fetchData();
     } catch (err) {
-      notify(err.response?.data?.error || 'Erro ao criar stream', 'error');
+      notify('Erro ao criar categoria', 'error');
     }
   };
 
-  const handleM3UImport = async (e) => {
-    e.preventDefault();
+  // Categories: Delete
+  const handleDeleteCategory = async (id) => {
+    if (!window.confirm('Deseja realmente excluir esta categoria?')) return;
     try {
+      await api.delete(`/api/admin/categories/${id}`);
+      notify('Categoria excluída.');
+      fetchData();
+    } catch (err) {
+      notify('Erro ao excluir categoria', 'error');
+    }
+  };
+
+  // M3U Import Flow with Preview & Deduplication
+  const handleAnalyzeM3U = () => {
+    if (!m3uText.trim()) {
+      notify('Cole o conteúdo M3U antes de analisar.', 'error');
+      return;
+    }
+    const lines = m3uText.split(/\r?\n/);
+    let channels = 0;
+    for (const l of lines) {
+      if (l.trim().startsWith('#EXTINF:')) channels++;
+    }
+    setM3uPreview({
+      totalLines: lines.length,
+      detectedChannels: channels,
+      readyToImport: channels > 0
+    });
+  };
+
+  const handleConfirmM3UImport = async () => {
+    try {
+      setLoading(true);
       const res = await api.post('/api/admin/streams/import-m3u', { m3uContent: m3uText });
-      notify(res.data.message);
-      setModalM3UImport(false);
+      notify(res.data.message || 'Canais importados com sucesso!');
       setM3uText('');
-      fetchData();
+      setM3uPreview(null);
+      setActiveTab('catalog');
     } catch (err) {
       notify(err.response?.data?.error || 'Erro ao importar M3U', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Firewall: Block IP
   const handleBlockIp = async (e) => {
     e.preventDefault();
     try {
       await api.post('/api/admin/firewall', firewallForm);
-      notify('IP bloqueado com sucesso!');
+      notify('IP bloqueado no firewall com sucesso!');
       setModalFirewall(false);
-      setFirewallForm({ ip_address: '', reason: 'Abuso de conexões' });
+      setFirewallForm({ ip_address: '', reason: 'Bloqueio administrativo' });
       fetchData();
     } catch (err) {
       notify(err.response?.data?.error || 'Erro ao bloquear IP', 'error');
     }
   };
 
+  // Firewall: Unblock IP
   const handleUnblockIp = async (id) => {
     try {
       await api.delete(`/api/admin/firewall/${id}`);
-      notify('IP desbloqueado!');
+      notify('Regra removida do firewall.');
       fetchData();
     } catch (err) {
       notify('Erro ao remover regra', 'error');
     }
   };
 
+  // Settings: Save
   const handleSaveSettings = async (e) => {
     e.preventDefault();
     try {
       await api.put('/api/admin/settings', settings);
-      notify('Configurações salvas com sucesso!');
+      notify('Configurações globais salvas com sucesso!');
     } catch (err) {
       notify('Erro ao salvar configurações', 'error');
     }
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    notify('Copiado para a área de transferência!');
+  // Tab Title helper
+  const getTabTitle = () => {
+    switch (activeTab) {
+      case 'dashboard': return 'Visão Geral & Métricas';
+      case 'support_inbox': return 'Central de Suporte & Chamados em Tempo Real';
+      case 'agents_observability': return 'Observabilidade de Agentes & Automação';
+      case 'telemetry': return 'Monitoramento & P2P Tracker';
+      case 'connections': return 'Transmissões Ativas em Tempo Real';
+      case 'streams_health': return 'Monitor de Canais & Streams';
+      case 'images': return 'VSAIPTV Image Manager';
+      case 'catalog': return 'Catálogo de Canais & VOD';
+      case 'clients': return 'Gerenciamento de Clientes';
+      case 'resellers': return 'Revendedores & Sub-revendas';
+      case 'reports': return 'Extrato de Créditos & Ledger';
+      case 'import_m3u': return 'Importador M3U Profissional';
+      case 'categories': return 'Gestão de Categorias';
+      case 'firewall': return 'Firewall & Proteção de Rede';
+      case 'audit_logs': return 'Trilha de Auditoria Administrativa';
+      case 'health': return 'Central de Saúde & Backups';
+      case 'settings': return 'Configurações Globais do Sistema';
+      default: return 'Painel Administrativo Master';
+    }
   };
 
+  const sidebarWidth = isSidebarCollapsed ? 72 : 260;
+
   return (
-    <div style={{ padding: '24px', maxWidth: '1440px', margin: '0 auto' }}>
-      
-      {/* Feedback Toast */}
+    <div style={{ minHeight: '100vh', background: '#090d16', color: '#f8fafc', display: 'flex' }}>
+      {/* Toast Notification */}
       {feedback.message && (
         <div style={{
           position: 'fixed',
-          top: '20px',
-          right: '20px',
-          zIndex: 2000,
-          background: feedback.type === 'error' ? '#ef4444' : '#10b981',
+          top: '24px',
+          right: '24px',
+          zIndex: 9999,
+          background: feedback.type === 'error' ? 'rgba(239, 68, 68, 0.95)' : 'rgba(16, 185, 129, 0.95)',
           color: '#fff',
           padding: '12px 20px',
-          borderRadius: 'var(--radius-md)',
-          boxShadow: '0 8px 25px rgba(0,0,0,0.4)',
+          borderRadius: '10px',
+          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)',
+          backdropFilter: 'blur(8px)',
+          fontWeight: '600',
+          fontSize: '0.88rem',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
-          fontWeight: '600',
-          fontSize: '0.9rem',
+          gap: '10px',
+          border: '1px solid rgba(255, 255, 255, 0.2)'
         }}>
-          <Check size={18} />
+          {feedback.type === 'error' ? <AlertCircle size={18} /> : <Check size={18} />}
           <span>{feedback.message}</span>
         </div>
       )}
 
-      {/* Header Tabs */}
+      {/* Left Collapsible Sidebar */}
+      <MasterSidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isCollapsed={isSidebarCollapsed}
+        setIsCollapsed={setIsSidebarCollapsed}
+        isMobileOpen={isMobileMenuOpen}
+        setIsMobileOpen={setIsMobileMenuOpen}
+        onLogout={onLogout}
+      />
+
+      {/* Main Content Area */}
       <div style={{
+        flex: 1,
+        marginLeft: `${sidebarWidth}px`,
+        transition: 'margin-left 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '16px',
-        marginBottom: '28px',
-      }}>
-        <div style={{
+        flexDirection: 'column',
+        minHeight: '100vh',
+        maxWidth: `calc(100vw - ${sidebarWidth}px)`
+      }} className="master-content-area">
+        {/* Top Header Bar */}
+        <header style={{
+          height: '68px',
+          padding: '0 28px',
+          background: '#0d111d',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           display: 'flex',
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-color)',
-          padding: '4px',
-          borderRadius: 'var(--radius-lg)',
-          overflowX: 'auto',
-          maxWidth: '100%',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          position: 'sticky',
+          top: 0,
+          zIndex: 900
         }}>
-          {[
-            { id: 'telemetry', label: 'Monitoramento & P2P', icon: Activity },
-            { id: 'resellers', label: 'Revendedores', icon: Users },
-            { id: 'clients', label: 'Todos os Clientes', icon: Wifi },
-            { id: 'catalog', label: 'Catálogo de Canais & VOD', icon: Tv },
-            { id: 'firewall', label: 'Firewall & IPs', icon: ShieldAlert },
-            { id: 'reports', label: 'Relatórios & Auditoria', icon: FileText },
-            { id: 'settings', label: 'Configurações', icon: Settings },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '9px 16px',
-                  borderRadius: 'var(--radius-md)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  background: isActive ? 'var(--primary-gradient)' : 'transparent',
-                  color: isActive ? '#fff' : 'var(--text-muted)',
-                  fontWeight: '600',
-                  fontSize: '0.85rem',
-                  transition: 'var(--transition)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <Icon size={16} />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {/* Mobile hamburger trigger */}
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="mobile-menu-trigger"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                display: 'none',
+                padding: '6px'
+              }}
+            >
+              <Menu size={22} />
+            </button>
 
-        <button 
-          onClick={fetchData} 
-          className="btn btn-secondary btn-sm"
-          title="Atualizar dados"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          <span>Atualizar</span>
-        </button>
-      </div>
-
-      {/* ==================================================== */}
-      {/* TAB 1: TELEMETRY & MONITORING */}
-      {/* ==================================================== */}
-      {activeTab === 'telemetry' && telemetry && (
-        <div className="animate-fade">
-          {/* Metrics Top Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-            <div className="stat-card">
-              <div>
-                <span className="stat-label">Conexões Simultâneas</span>
-                <div className="stat-value">{telemetry.activeConnections}</div>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                  {telemetry.activeUsers} cliente(s) únicos
-                </span>
-              </div>
-              <div className="stat-icon-wrapper" style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>
-                <Wifi size={24} />
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div>
-                <span className="stat-label">Consumo de Banda Total</span>
-                <div className="stat-value">{telemetry.estimatedBandwidthMbps} <span style={{ fontSize: '1rem', fontWeight: '400' }}>Mbps</span></div>
-                <span style={{ fontSize: '0.78rem', color: '#10b981' }}>
-                  ⚡ Economizado: {telemetry.bandwidthSavedMbps} Mbps
-                </span>
-              </div>
-              <div className="stat-icon-wrapper" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' }}>
-                <Activity size={24} />
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div>
-                <span className="stat-label">Economia de Banda P2P</span>
-                <div className="stat-value" style={{ color: '#22d3ee' }}>{telemetry.p2pOffloadPercent}%</div>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                  Mesh WebRTC descentralizada
-                </span>
-              </div>
-              <div className="stat-icon-wrapper" style={{ background: 'rgba(6, 182, 212, 0.15)', color: '#22d3ee' }}>
-                <Radio size={24} />
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div>
-                <span className="stat-label">Carga do Servidor</span>
-                <div className="stat-value">{telemetry.serverCpuUsage}%</div>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                  RAM: {telemetry.serverRamUsage}% em uso
-                </span>
-              </div>
-              <div className="stat-icon-wrapper" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }}>
-                <Cpu size={24} />
-              </div>
+            <div>
+              <h1 style={{ fontSize: '1.15rem', fontWeight: '800', margin: 0, color: '#f8fafc', letterSpacing: '-0.2px' }}>
+                {getTabTitle()}
+              </h1>
+              <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                VSAIPTV • Operação Centralizada
+              </span>
             </div>
           </div>
 
-          {/* Active Connections Table */}
-          <div className="glass-card" style={{ padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
-              <div>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: '700' }}>Transmissões Ativas em Tempo Real</h3>
-                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  Monitorando clientes assistindo neste exato momento com IP, dispositivo e tráfego.
-                </p>
-              </div>
-              <span className="badge badge-active">
-                ● {connections.length} Sessão(ões) Online
-              </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '0.78rem'
+            }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#34d399', boxShadow: '0 0 8px #34d399' }} />
+              <span style={{ color: '#cbd5e1', fontWeight: '600' }}>Cluster Operacional</span>
             </div>
+          </div>
+        </header>
 
-            <div className="data-table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Usuário</th>
-                    <th>Revendedor</th>
-                    <th>Canal / Conteúdo</th>
-                    <th>IP / Local</th>
-                    <th>Dispositivo</th>
-                    <th>Conectado às</th>
-                    <th>Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {connections.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-dim)' }}>
-                        Nenhuma transmissão ativa no momento. Inicie um canal no WebTV Player ou app externo.
-                      </td>
+        {/* Viewport Content */}
+        <main style={{ flex: 1, padding: '24px 28px', overflowY: 'auto' }}>
+          {/* TAB: DASHBOARD (Resumo Executivo) */}
+          {activeTab === 'dashboard' && (
+            <MasterDashboardHome setActiveTab={setActiveTab} notify={notify} />
+          )}
+
+          {/* TAB: SUPPORT INBOX (Central de Suporte e Chamados) */}
+          {activeTab === 'support_inbox' && (
+            <MasterSupportInbox notify={notify} />
+          )}
+
+          {/* TAB: AGENTS OBSERVABILITY (Observabilidade & Kill Switches) */}
+          {activeTab === 'agents_observability' && (
+            <MasterAgentsObservability notify={notify} />
+          )}
+
+          {/* TAB: LEGENDAS IA (FASE 49-53) */}
+          {activeTab === 'ai_subtitles' && (
+            <MasterSubtitlesView notify={notify} />
+          )}
+
+          {/* TAB: CATALOG (Catálogo de Canais & VOD com Paginação Server-Side) */}
+          {activeTab === 'catalog' && (
+            <MasterCatalogView notify={notify} onOpenM3UImport={() => setActiveTab('import_m3u')} />
+          )}
+
+          {/* TAB: CLIENTS (Clientes com Senhas Criptografadas, Teste 30m e Senhas Temporárias) */}
+          {activeTab === 'clients' && (
+            <MasterClientsView notify={notify} />
+          )}
+
+          {/* TAB: IMAGE MANAGER (Image Manager Real com Estatísticas Reais) */}
+          {activeTab === 'images' && (
+            <ImageManagerView notify={notify} />
+          )}
+
+          {/* TAB: STREAMS HEALTH (Monitor de Canais com Varredura Concorrente) */}
+          {activeTab === 'streams_health' && (
+            <StreamMonitorView notify={notify} />
+          )}
+
+          {/* TAB: HEALTH (Central de Saúde) */}
+          {activeTab === 'health' && (
+            <HealthCenterView notify={notify} />
+          )}
+
+          {/* TAB: BACKUP MANAGER (Cópias de Segurança & Integridade) */}
+          {activeTab === 'backups' && (
+            <MasterBackupView notify={notify} />
+          )}
+
+          {/* TAB: EPG (Guia de Programação de TV) */}
+          {activeTab === 'epg' && (
+            <MasterEpgView notify={notify} />
+          )}
+
+          {/* TAB: TELEMETRY (Monitoramento & P2P Tracker) */}
+          {activeTab === 'telemetry' && telemetry && (
+            <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                <div style={{ background: '#131828', padding: '20px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>Clientes Ativos</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#38bdf8', marginTop: '6px' }}>{telemetry.totalClientsConnected || 0}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Sessões em tempo real</div>
+                </div>
+
+                <div style={{ background: '#131828', padding: '20px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>Streams Ao Vivo</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#a78bfa', marginTop: '6px' }}>{telemetry.activeStreams || 0}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Canais sendo transmitidos</div>
+                </div>
+
+                <div style={{ background: '#131828', padding: '20px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>Swarm P2P Mesh</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#34d399', marginTop: '6px' }}>{telemetry.p2pSwarm?.activeNodes || 0}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Nós trocando pacotes WebRTC</div>
+                </div>
+
+                <div style={{ background: '#131828', padding: '20px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>Economia de Banda P2P</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#f59e0b', marginTop: '6px' }}>{telemetry.p2pSwarm?.bandwidthSavedPercentage || 0}%</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Tráfego aliviado da CDN</div>
+                </div>
+              </div>
+
+              {/* Memory & System Specs */}
+              <div style={{ background: '#131828', padding: '24px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '1.05rem', fontWeight: '700', color: '#f8fafc' }}>
+                  Recursos do Servidor Node.js
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                  <div style={{ background: '#090d16', padding: '16px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Memória RSS</div>
+                    <div style={{ fontSize: '1.3rem', fontWeight: '700', color: '#f8fafc', marginTop: '4px' }}>
+                      {telemetry.system?.memory ? (telemetry.system.memory.rss / 1024 / 1024).toFixed(1) + ' MB' : 'N/A'}
+                    </div>
+                  </div>
+                  <div style={{ background: '#090d16', padding: '16px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Heap Utilizado</div>
+                    <div style={{ fontSize: '1.3rem', fontWeight: '700', color: '#f8fafc', marginTop: '4px' }}>
+                      {telemetry.system?.memory ? (telemetry.system.memory.heapUsed / 1024 / 1024).toFixed(1) + ' MB' : 'N/A'}
+                    </div>
+                  </div>
+                  <div style={{ background: '#090d16', padding: '16px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Uptime do Processo</div>
+                    <div style={{ fontSize: '1.3rem', fontWeight: '700', color: '#f8fafc', marginTop: '4px' }}>
+                      {telemetry.system?.uptime ? Math.floor(telemetry.system.uptime / 3600) + 'h ' + Math.floor((telemetry.system.uptime % 3600) / 60) + 'm' : 'N/A'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: CONNECTIONS (Transmissões Ativas) */}
+          {activeTab === 'connections' && (
+            <div className="animate-fade" style={{ background: '#131828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700', color: '#f8fafc' }}>Sessões Ativas em Execução</h3>
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{connections.length} clientes assistindo no momento</span>
+                </div>
+                <button onClick={fetchTelemetry} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer' }}>
+                  Atualizar
+                </button>
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ background: '#090d16', color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <th style={{ padding: '12px 16px' }}>Cliente</th>
+                      <th style={{ padding: '12px 16px' }}>Revenda</th>
+                      <th style={{ padding: '12px 16px' }}>Conteúdo</th>
+                      <th style={{ padding: '12px 16px' }}>IP & Dispositivo</th>
+                      <th style={{ padding: '12px 16px' }}>Início</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right' }}>Ação</th>
                     </tr>
-                  ) : (
-                    connections.map((conn) => (
-                      <tr key={conn.id}>
-                        <td>
-                          <strong>{conn.username}</strong>
-                          <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)' }}>{conn.user_name}</span>
+                  </thead>
+                  <tbody>
+                    {connections.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
+                          Nenhuma transmissão ativa no momento.
                         </td>
-                        <td>
-                          <span className="badge badge-suspended">{conn.reseller_username || 'Direto'}</span>
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Tv size={14} color="#818cf8" />
-                            <span>{conn.stream_name || 'Desconhecido'}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <code style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: '4px' }}>
-                            {conn.ip_address}
-                          </code>
-                        </td>
-                        <td>{conn.device_type}</td>
-                        <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                          {new Date(conn.connected_at).toLocaleTimeString('pt-BR')}
-                        </td>
-                        <td>
+                      </tr>
+                    ) : (
+                      connections.map((c) => (
+                        <tr key={c.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '12px 16px', fontWeight: '700', color: '#f8fafc' }}>{c.username}</td>
+                          <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{c.reseller_username || 'Master'}</td>
+                          <td style={{ padding: '12px 16px', color: '#38bdf8' }}>{c.stream_name || 'Canal'}</td>
+                          <td style={{ padding: '12px 16px', fontSize: '0.78rem', color: '#cbd5e1' }}>
+                            <div>{c.ip_address || '127.0.0.1'}</div>
+                            <div style={{ color: '#64748b' }}>{c.device_info || 'Web Player'}</div>
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: '0.8rem', color: '#94a3b8' }}>
+                            {c.connected_at ? new Date(c.connected_at).toLocaleTimeString('pt-BR') : 'Agora'}
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                            <button
+                              onClick={() => handleKillConnection(c.id)}
+                              style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', padding: '5px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '600' }}
+                            >
+                              Derrubar
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: RESELLERS (Revendedores com Ledger e Sem Senhas Cruas) */}
+          {activeTab === 'resellers' && (
+            <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ padding: '20px 24px', background: '#131828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700', color: '#f8fafc' }}>Rede de Revendedores</h3>
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{resellers.length} revendedores cadastrados</span>
+                </div>
+                <button
+                  onClick={() => setModalReseller(true)}
+                  style={{ background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)', border: 'none', color: '#fff', padding: '8px 16px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Plus size={16} />
+                  <span>Novo Revendedor</span>
+                </button>
+              </div>
+
+              <div style={{ background: '#131828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ background: '#090d16', color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                        <th style={{ padding: '12px 16px' }}>Revendedor</th>
+                        <th style={{ padding: '12px 16px' }}>Contato</th>
+                        <th style={{ padding: '12px 16px' }}>Saldo Créditos</th>
+                        <th style={{ padding: '12px 16px' }}>Clientes Ativos</th>
+                        <th style={{ padding: '12px 16px' }}>Status</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'right' }}>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resellers.map((r) => (
+                        <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '12px 16px' }}>
+                            <strong style={{ color: '#f8fafc' }}>{r.username}</strong>
+                            <span style={{ display: 'block', fontSize: '0.74rem', color: '#64748b' }}>{r.name || 'Revenda'}</span>
+                          </td>
+                          <td style={{ padding: '12px 16px', color: '#cbd5e1' }}>{r.phone || r.email || '-'}</td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <span style={{ fontSize: '1rem', fontWeight: '800', color: r.credits < 5 ? '#f87171' : '#34d399' }}>
+                              {parseFloat(r.credits || 0).toFixed(1)}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 16px', color: '#cbd5e1' }}>
+                            {r.active_clients || 0} / {r.total_clients || 0}
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <span style={{
+                              fontSize: '0.72rem', fontWeight: '700', padding: '2px 8px', borderRadius: '6px',
+                              background: r.status === 'active' ? 'rgba(52,211,153,0.15)' : 'rgba(248,113,113,0.15)',
+                              color: r.status === 'active' ? '#34d399' : '#f87171'
+                            }}>
+                              {r.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                              <button
+                                onClick={() => setModalCredits(r)}
+                                style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.3)', color: '#34d399', padding: '5px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '600' }}
+                              >
+                                Créditos
+                              </button>
+                              <button
+                                onClick={() => handleToggleResellerStatus(r)}
+                                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' }}
+                              >
+                                {r.status === 'active' ? 'Suspender' : 'Ativar'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: REPORTS & AUDIT */}
+          {activeTab === 'reports' && reports && (
+            <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                <div style={{ background: '#131828', padding: '20px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Créditos em Circulação</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#a78bfa', marginTop: '6px' }}>
+                    {reports.totalCreditsInCirculation?.toFixed(1) || '0.0'}
+                  </div>
+                </div>
+                <div style={{ background: '#131828', padding: '20px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Clientes Ativos</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#34d399', marginTop: '6px' }}>
+                    {reports.totalActiveClients || 0}
+                  </div>
+                </div>
+                <div style={{ background: '#131828', padding: '20px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Testes Gerados</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#fbbf24', marginTop: '6px' }}>
+                    {reports.totalTrialsGenerated || 0}
+                  </div>
+                </div>
+              </div>
+
+              {/* Transactions Ledger */}
+              <div style={{ background: '#131828', padding: '24px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '1.05rem', fontWeight: '700', color: '#f8fafc' }}>
+                  Movimentações de Créditos (Ledger Imutável)
+                </h3>
+                <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
+                  {reports.recentTransactions?.map((t) => (
+                    <div key={t.id} style={{ padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong style={{ color: '#f8fafc' }}>{t.reseller_name || t.reseller_username}</strong>
+                        <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>{t.reason}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{new Date(t.created_at).toLocaleString('pt-BR')}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: '800', fontSize: '1rem', color: t.amount > 0 ? '#34d399' : '#f87171' }}>
+                          {t.amount > 0 ? `+${t.amount}` : t.amount}
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Saldo: {t.balance_after}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: M3U IMPORT (Importador M3U Profissional com Validação e Preview) */}
+          {activeTab === 'import_m3u' && (
+            <div className="animate-fade" style={{ maxWidth: '800px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ background: '#131828', padding: '24px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <h2 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#f8fafc', margin: '0 0 8px 0' }}>
+                  Importação de Playlists M3U em Lote
+                </h2>
+                <p style={{ fontSize: '0.82rem', color: '#94a3b8', margin: '0 0 20px 0' }}>
+                  Cole o conteúdo da lista M3U. O sistema analisará previamente a quantidade de canais, tags tvg-logo e identificadores antes de gravar no banco de dados.
+                </p>
+
+                <textarea
+                  rows={10}
+                  placeholder="#EXTM3U&#10;#EXTINF:-1 tvg-id='cnn' tvg-logo='http://...' group-title='Noticias',CNN Brasil&#10;http://stream..."
+                  value={m3uText}
+                  onChange={(e) => {
+                    setM3uText(e.target.value);
+                    setM3uPreview(null);
+                  }}
+                  style={{
+                    width: '100%', padding: '14px', borderRadius: '8px', background: '#090d16',
+                    border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: '0.82rem', fontFamily: 'monospace'
+                  }}
+                />
+
+                <div style={{ display: 'flex', gap: '12px', marginTop: '16px', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={handleAnalyzeM3U}
+                    disabled={!m3uText.trim() || loading}
+                    style={{
+                      background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+                      color: '#cbd5e1', padding: '9px 18px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer'
+                    }}
+                  >
+                    Analisar Conteúdo
+                  </button>
+
+                  {m3uPreview?.readyToImport && (
+                    <button
+                      type="button"
+                      onClick={handleConfirmM3UImport}
+                      disabled={loading}
+                      style={{
+                        background: 'linear-gradient(135deg, #10b981, #06b6d4)', border: 'none',
+                        color: '#fff', padding: '9px 20px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer'
+                      }}
+                    >
+                      {loading ? 'Importando...' : `Confirmar Importação de ${m3uPreview.detectedChannels} Canais`}
+                    </button>
+                  )}
+                </div>
+
+                {m3uPreview && (
+                  <div style={{ marginTop: '18px', padding: '16px', background: '#090d16', borderRadius: '8px', border: '1px solid rgba(56,189,248,0.3)', fontSize: '0.85rem' }}>
+                    <div style={{ color: '#38bdf8', fontWeight: '700' }}>Resultado da Análise Preliminar:</div>
+                    <div style={{ marginTop: '4px', color: '#cbd5e1' }}>
+                      Linhas totais: {m3uPreview.totalLines} | Canais detectados: <strong>{m3uPreview.detectedChannels}</strong>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB: CATEGORIES */}
+          {activeTab === 'categories' && (
+            <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ padding: '20px 24px', background: '#131828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700', color: '#f8fafc' }}>Categorias do Sistema</h3>
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{categories.length} categorias cadastradas</span>
+                </div>
+                <button
+                  onClick={() => setModalCategory(true)}
+                  style={{ background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)', border: 'none', color: '#fff', padding: '8px 16px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Plus size={16} /> Nova Categoria
+                </button>
+              </div>
+
+              <div style={{ background: '#131828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ background: '#090d16', color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <th style={{ padding: '12px 16px' }}>Nome</th>
+                      <th style={{ padding: '12px 16px' }}>Tipo</th>
+                      <th style={{ padding: '12px 16px' }}>Streams Associadas</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right' }}>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {categories.map((c) => (
+                      <tr key={c.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: '700', color: '#f8fafc' }}>{c.name}</td>
+                        <td style={{ padding: '12px 16px', textTransform: 'uppercase', color: '#38bdf8', fontSize: '0.75rem', fontWeight: '700' }}>{c.type}</td>
+                        <td style={{ padding: '12px 16px', color: '#cbd5e1' }}>{c.streams_count || 0}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                           <button
-                            onClick={() => handleKillConnection(conn.id)}
-                            className="btn btn-danger btn-sm"
-                            title="Derrubar sessão"
+                            onClick={() => handleDeleteCategory(c.id)}
+                            style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer' }}
                           >
-                            <Trash2 size={13} /> Desconectar
+                            <Trash2 size={13} />
                           </button>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* ==================================================== */}
-      {/* TAB 2: RESELLERS MANAGEMENT */}
-      {/* ==================================================== */}
-      {activeTab === 'resellers' && (
-        <div className="animate-fade">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <div>
-              <h2 style={{ fontSize: '1.4rem', fontWeight: '800' }}>Gestão de Revendedores</h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Cadastre e gerencie revendas oficiais, saldos de créditos e acompanhe vendas.
-              </p>
-            </div>
-            <button onClick={() => setModalReseller(true)} className="btn btn-primary">
-              <Plus size={16} /> Novo Revendedor
-            </button>
-          </div>
+          {/* TAB: FIREWALL */}
+          {activeTab === 'firewall' && (
+            <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ padding: '20px 24px', background: '#131828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700', color: '#f8fafc' }}>Firewall & Regras de Acesso</h3>
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{firewallRules.length} endereços IP bloqueados</span>
+                </div>
+                <button
+                  onClick={() => setModalFirewall(true)}
+                  style={{ background: 'linear-gradient(135deg, #ef4444, #f97316)', border: 'none', color: '#fff', padding: '8px 16px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Plus size={16} /> Bloquear IP
+                </button>
+              </div>
 
-          <div className="data-table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Revenda</th>
-                  <th>Contato</th>
-                  <th>Saldo de Créditos</th>
-                  <th>Clientes Ativos</th>
-                  <th>Status</th>
-                  <th>Criado Em</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {resellers.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <strong>{r.name || r.username}</strong>
-                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)' }}>@{r.username}</span>
-                    </td>
-                    <td>
-                      <div style={{ fontSize: '0.82rem' }}>{r.phone || 'Sem telefone'}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{r.email || 'Sem e-mail'}</div>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '1.1rem', fontWeight: '700', color: r.credits <= 5 ? '#f87171' : '#818cf8' }}>
-                          {r.credits.toFixed(1)}
-                        </span>
-                        <button
-                          onClick={() => { setModalCredits(r); setCreditForm({ amount: 10, reason: 'Recarga Master' }); }}
-                          className="btn btn-secondary btn-sm"
-                          style={{ padding: '3px 8px', fontSize: '0.75rem' }}
-                        >
-                          <Coins size={13} /> Recarregar
-                        </button>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="badge badge-active">{r.active_clients} ativos</span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginLeft: '6px' }}>de {r.total_clients}</span>
-                    </td>
-                    <td>
-                      <span className={`badge ${r.status === 'active' ? 'badge-active' : 'badge-suspended'}`}>
-                        {r.status === 'active' ? 'Ativo' : 'Suspenso'}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      {new Date(r.created_at).toLocaleDateString('pt-BR')}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <button
-                          onClick={async () => {
-                            const newStatus = r.status === 'active' ? 'suspended' : 'active';
-                            await api.put(`/api/admin/resellers/${r.id}`, { ...r, status: newStatus });
-                            notify(`Revendedor ${newStatus === 'active' ? 'ativado' : 'suspenso'}!`);
-                            fetchData();
-                          }}
-                          className="btn btn-secondary btn-sm"
-                        >
-                          {r.status === 'active' ? 'Suspender' : 'Ativar'}
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (confirm(`Excluir o revendedor ${r.username}? Seus clientes ficarão sem revenda associada.`)) {
-                              await api.delete(`/api/admin/resellers/${r.id}`);
-                              notify('Revendedor excluído!');
-                              fetchData();
-                            }
-                          }}
-                          className="btn btn-danger btn-sm"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ==================================================== */}
-      {/* TAB 3: GLOBAL CLIENTS */}
-      {/* ==================================================== */}
-      {activeTab === 'clients' && (
-        <div className="animate-fade">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <div>
-              <h2 style={{ fontSize: '1.4rem', fontWeight: '800' }}>Todos os Clientes do Sistema</h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Visão global de todos os assinantes e testes de todos os revendedores cadastrados.
-              </p>
-            </div>
-            <span className="badge badge-active">{clients.length} Clientes Totais</span>
-          </div>
-
-          <div className="data-table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Usuário</th>
-                  <th>Revendedor Dono</th>
-                  <th>Senha</th>
-                  <th>Telas Permitidas</th>
-                  <th>Expiração</th>
-                  <th>Status</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clients.map((c) => (
-                  <tr key={c.id}>
-                    <td>
-                      <strong>{c.username}</strong>
-                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)' }}>{c.name || 'Cliente'}</span>
-                    </td>
-                    <td>
-                      <span className="badge badge-p2p">{c.reseller_username || 'Direto Master'}</span>
-                    </td>
-                    <td>
-                      <code style={{ fontSize: '0.82rem', background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: '4px' }}>
-                        {c.plain_password || '••••••'}
-                      </code>
-                    </td>
-                    <td>
-                      <span style={{ fontWeight: '600' }}>{c.active_screens || 0} / {c.max_connections} tela(s)</span>
-                    </td>
-                    <td style={{ fontSize: '0.82rem' }}>
-                      {c.expires_at ? (
-                        <span style={{ color: new Date(c.expires_at) < new Date() ? '#f87171' : '#34d399' }}>
-                          {new Date(c.expires_at).toLocaleDateString('pt-BR')} {new Date(c.expires_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      ) : 'Vitalício'}
-                      {c.is_trial === 1 && <span className="badge badge-trial" style={{ marginLeft: '6px' }}>Teste</span>}
-                    </td>
-                    <td>
-                      <span className={`badge ${c.status === 'active' ? 'badge-active' : c.status === 'expired' ? 'badge-expired' : 'badge-suspended'}`}>
-                        {c.status}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <button
-                          onClick={() => setModalLinks(c)}
-                          className="btn btn-secondary btn-sm"
-                          title="Ver Links M3U / WebTV"
-                        >
-                          <Copy size={13} /> Links
-                        </button>
-                        <button
-                          onClick={() => { setModalTransfer(c); setTargetResellerId(resellers[0]?.id || ''); }}
-                          className="btn btn-secondary btn-sm"
-                          title="Transferir para outro revendedor"
-                        >
-                          <ArrowRightLeft size={13} /> Transferir
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (confirm(`Excluir cliente ${c.username}?`)) {
-                              await api.delete(`/api/admin/clients/${c.id}`);
-                              notify('Cliente excluído!');
-                              fetchData();
-                            }
-                          }}
-                          className="btn btn-danger btn-sm"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ==================================================== */}
-      {/* TAB 4: CATALOG & CHANNELS */}
-      {/* ==================================================== */}
-      {activeTab === 'catalog' && (
-        <div className="animate-fade">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <div>
-              <h2 style={{ fontSize: '1.4rem', fontWeight: '800' }}>Catálogo de Canais & VOD</h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Gerencie canais ao vivo (HLS/M3U8), filmes e séries do sistema.
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => setModalM3UImport(true)} className="btn btn-secondary">
-                <UploadCloud size={16} /> Importar M3U em Lote
-              </button>
-              <button onClick={() => setModalStream(true)} className="btn btn-primary">
-                <Plus size={16} /> Novo Canal / VOD
-              </button>
-            </div>
-          </div>
-
-          <div className="data-table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Ícone</th>
-                  <th>Nome do Conteúdo</th>
-                  <th>Tipo</th>
-                  <th>Categoria</th>
-                  <th>URL da Fonte / Stream</th>
-                  <th>Status</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {streams.map((s) => (
-                  <tr key={s.id}>
-                    <td>
-                      <img 
-                        src={s.icon_url || 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=64'} 
-                        alt="" 
-                        style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }}
-                      />
-                    </td>
-                    <td>
-                      <strong>{s.name}</strong>
-                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                        {s.epg_channel_id ? `EPG: ${s.epg_channel_id}` : ''}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`badge ${s.type === 'live' ? 'badge-active' : s.type === 'movie' ? 'badge-trial' : 'badge-p2p'}`}>
-                        {s.type === 'live' ? 'TV Ao Vivo' : s.type === 'movie' ? 'Filme' : 'Série'}
-                      </span>
-                    </td>
-                    <td>{s.category_name || 'Sem Categoria'}</td>
-                    <td>
-                      <span style={{ 
-                        display: 'inline-block', 
-                        maxWidth: '260px', 
-                        overflow: 'hidden', 
-                        textOverflow: 'ellipsis', 
-                        whiteSpace: 'nowrap',
-                        fontSize: '0.78rem',
-                        color: 'var(--text-muted)'
-                      }}>
-                        {s.stream_url}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="badge badge-active">Online</span>
-                    </td>
-                    <td>
-                      <button
-                        onClick={async () => {
-                          if (confirm(`Excluir ${s.name}?`)) {
-                            await api.delete(`/api/admin/streams/${s.id}`);
-                            notify('Conteúdo excluído!');
-                            fetchData();
-                          }
-                        }}
-                        className="btn btn-danger btn-sm"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ==================================================== */}
-      {/* TAB 5: FIREWALL & SECURITY */}
-      {/* ==================================================== */}
-      {activeTab === 'firewall' && (
-        <div className="animate-fade">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <div>
-              <h2 style={{ fontSize: '1.4rem', fontWeight: '800' }}>Firewall & Proteção Anti-Abuso</h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Bloqueie IPs suspeitos, tentativas de ataque ou uso indevido de conexões.
-              </p>
-            </div>
-            <button onClick={() => setModalFirewall(true)} className="btn btn-danger">
-              <ShieldAlert size={16} /> Bloquear Novo IP
-            </button>
-          </div>
-
-          <div className="data-table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Endereço IP</th>
-                  <th>Tipo de Regra</th>
-                  <th>Motivo do Bloqueio</th>
-                  <th>Data do Bloqueio</th>
-                  <th>Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {firewallRules.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-dim)' }}>
-                      Nenhum IP bloqueado no momento. Seu sistema está seguro e operacional.
-                    </td>
-                  </tr>
-                ) : (
-                  firewallRules.map((rule) => (
-                    <tr key={rule.id}>
-                      <td>
-                        <code style={{ fontSize: '0.9rem', color: '#f87171', fontWeight: '700' }}>{rule.ip_address}</code>
-                      </td>
-                      <td>
-                        <span className="badge badge-expired">BLOQUEADO</span>
-                      </td>
-                      <td>{rule.reason}</td>
-                      <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        {new Date(rule.created_at).toLocaleString('pt-BR')}
-                      </td>
-                      <td>
-                        <button onClick={() => handleUnblockIp(rule.id)} className="btn btn-secondary btn-sm">
-                          Desbloquear
-                        </button>
-                      </td>
+              <div style={{ background: '#131828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ background: '#090d16', color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <th style={{ padding: '12px 16px' }}>IP</th>
+                      <th style={{ padding: '12px 16px' }}>Motivo</th>
+                      <th style={{ padding: '12px 16px' }}>Data</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right' }}>Ação</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ==================================================== */}
-      {/* TAB 6: REPORTS & AUDIT */}
-      {/* ==================================================== */}
-      {activeTab === 'reports' && reports && (
-        <div className="animate-fade">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-            <div className="stat-card">
-              <div>
-                <span className="stat-label">Créditos em Circulação</span>
-                <div className="stat-value">{reports.totalCreditsInCirculation.toFixed(1)}</div>
-              </div>
-              <div className="stat-icon-wrapper" style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>
-                <Coins size={24} />
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div>
-                <span className="stat-label">Total de Clientes Ativos</span>
-                <div className="stat-value">{reports.totalActiveClients}</div>
-              </div>
-              <div className="stat-icon-wrapper" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' }}>
-                <Users size={24} />
+                  </thead>
+                  <tbody>
+                    {firewallRules.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
+                          Nenhum IP bloqueado. Sistema seguro e sem restrições.
+                        </td>
+                      </tr>
+                    ) : (
+                      firewallRules.map((rule) => (
+                        <tr key={rule.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '12px 16px', fontWeight: '700', color: '#f87171' }}>{rule.ip_address}</td>
+                          <td style={{ padding: '12px 16px', color: '#cbd5e1' }}>{rule.reason}</td>
+                          <td style={{ padding: '12px 16px', fontSize: '0.8rem', color: '#94a3b8' }}>{new Date(rule.created_at).toLocaleString('pt-BR')}</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                            <button
+                              onClick={() => handleUnblockIp(rule.id)}
+                              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem' }}
+                            >
+                              Desbloquear
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
+          )}
 
-            <div className="stat-card">
-              <div>
-                <span className="stat-label">Testes Grátis Gerados</span>
-                <div className="stat-value">{reports.totalTrialsGenerated}</div>
-              </div>
-              <div className="stat-icon-wrapper" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }}>
-                <Radio size={24} />
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            {/* Transactions */}
-            <div className="glass-card" style={{ padding: '20px' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '14px' }}>Movimentações de Créditos</h3>
-              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                {reports.recentTransactions?.map((t) => (
-                  <div key={t.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
-                    <div>
-                      <strong style={{ fontSize: '0.88rem' }}>{t.reseller_name || t.reseller_username}</strong>
-                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t.reason}</span>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontWeight: '700', color: t.amount > 0 ? '#34d399' : '#f87171' }}>
-                        {t.amount > 0 ? `+${t.amount}` : t.amount}
-                      </span>
-                      <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                        Saldo: {t.balance_after}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Audit Logs */}
-            <div className="glass-card" style={{ padding: '20px' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '14px' }}>Logs de Auditoria de Ações</h3>
-              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+          {/* TAB: AUDIT LOGS */}
+          {activeTab === 'audit_logs' && (
+            <div className="animate-fade" style={{ background: '#131828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)', padding: '24px' }}>
+              <h3 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', fontWeight: '700', color: '#f8fafc' }}>Trilha de Auditoria Administrativa</h3>
+              <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
                 {auditLogs.map((log) => (
-                  <div key={log.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border-color)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                      <span className="badge badge-p2p" style={{ fontSize: '0.7rem' }}>{log.action}</span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                        {new Date(log.created_at).toLocaleTimeString('pt-BR')}
-                      </span>
+                  <div key={log.id} style={{ padding: '12px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.72rem', background: 'rgba(139,92,246,0.2)', color: '#a78bfa', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>
+                          {log.action}
+                        </span>
+                        <span style={{ fontSize: '0.85rem', color: '#f8fafc', fontWeight: '600' }}>{log.username || 'Sistema'}</span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '4px' }}>{log.details}</div>
                     </div>
-                    <p style={{ fontSize: '0.82rem', color: 'var(--text-main)' }}>{log.details}</p>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      {new Date(log.created_at).toLocaleString('pt-BR')}
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* ==================================================== */}
-      {/* TAB 7: SYSTEM SETTINGS */}
-      {/* ==================================================== */}
-      {activeTab === 'settings' && (
-        <div className="animate-fade" style={{ maxWidth: '720px' }}>
-          <div className="glass-card" style={{ padding: '28px' }}>
-            <h2 style={{ fontSize: '1.3rem', fontWeight: '800', marginBottom: '8px' }}>Configurações Globais do Servidor</h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '24px' }}>
-              Defina parâmetros comerciais, DNS e notificações automáticas do ecossistema.
-            </p>
+          {/* TAB: SETTINGS */}
+          {activeTab === 'settings' && (
+            <div className="animate-fade" style={{ maxWidth: '680px', background: '#131828', padding: '28px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#f8fafc', margin: '0 0 8px 0' }}>Configurações Globais</h2>
+              <p style={{ fontSize: '0.82rem', color: '#94a3b8', margin: '0 0 20px 0' }}>
+                Ajuste parâmetros de domínio, limites comerciais e contatos do ecossistema.
+              </p>
 
-            <form onSubmit={handleSaveSettings}>
-              <div className="input-group">
-                <label className="input-label">Nome da Plataforma / Marca</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={settings.server_name || ''}
-                  onChange={(e) => setSettings({ ...settings, server_name: e.target.value })}
-                />
-              </div>
-
-              <div className="input-group">
-                <label className="input-label">Domínio / Host do Servidor (Usado em M3U e Xtream Codes)</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={settings.server_domain || ''}
-                  onChange={(e) => setSettings({ ...settings, server_domain: e.target.value })}
-                  placeholder="http://localhost:5000"
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div className="input-group">
-                  <label className="input-label">Duração Padrão dos Testes (Horas)</label>
-                  <input
-                    type="number"
-                    className="form-control"
-                    value={settings.trial_default_hours || 4}
-                    onChange={(e) => setSettings({ ...settings, trial_default_hours: e.target.value })}
-                  />
-                </div>
-
-                <div className="input-group">
-                  <label className="input-label">Alerta de Créditos Baixos para Revenda</label>
-                  <input
-                    type="number"
-                    className="form-control"
-                    value={settings.reseller_min_credits_alert || 5}
-                    onChange={(e) => setSettings({ ...settings, reseller_min_credits_alert: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="input-group">
-                <label className="input-label">WhatsApp de Suporte Master</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={settings.whatsapp_support_phone || ''}
-                  onChange={(e) => setSettings({ ...settings, whatsapp_support_phone: e.target.value })}
-                  placeholder="+5511999999999"
-                />
-              </div>
-
-              <div className="input-group">
-                <label className="input-label">Telegram Bot Token (Opcional)</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={settings.telegram_bot_token || ''}
-                  onChange={(e) => setSettings({ ...settings, telegram_bot_token: e.target.value })}
-                  placeholder="123456789:ABCdef..."
-                />
-              </div>
-
-              <button type="submit" className="btn btn-primary" style={{ marginTop: '12px' }}>
-                Salvar Alterações
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ==================================================== */}
-      {/* MODALS */}
-      {/* ==================================================== */}
-
-      {/* Modal: New Reseller */}
-      {modalReseller && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Criar Novo Revendedor</h3>
-              <button onClick={() => setModalReseller(false)} className="btn btn-secondary btn-sm"><X size={16} /></button>
-            </div>
-            <form onSubmit={handleCreateReseller}>
-              <div className="modal-body">
-                <div className="input-group">
-                  <label className="input-label">Nome Completo / Empresa</label>
+              <form onSubmit={handleSaveSettings} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Nome da Plataforma</label>
                   <input
                     type="text"
-                    className="form-control"
-                    required
-                    value={resellerForm.name}
-                    onChange={(e) => setResellerForm({ ...resellerForm, name: e.target.value })}
+                    value={settings.server_name || ''}
+                    onChange={(e) => setSettings({ ...settings, server_name: e.target.value })}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
                   />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="input-group">
-                    <label className="input-label">Usuário de Login</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      required
-                      value={resellerForm.username}
-                      onChange={(e) => setResellerForm({ ...resellerForm, username: e.target.value })}
-                    />
-                  </div>
-                  <div className="input-group">
-                    <label className="input-label">Senha Inicial</label>
-                    <input
-                      type="password"
-                      className="form-control"
-                      required
-                      value={resellerForm.password}
-                      onChange={(e) => setResellerForm({ ...resellerForm, password: e.target.value })}
-                    />
-                  </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Domínio / Host Público</label>
+                  <input
+                    type="text"
+                    value={settings.server_domain || ''}
+                    onChange={(e) => setSettings({ ...settings, server_domain: e.target.value })}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+                  />
                 </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="input-group">
-                    <label className="input-label">WhatsApp</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="+55..."
-                      value={resellerForm.phone}
-                      onChange={(e) => setResellerForm({ ...resellerForm, phone: e.target.value })}
-                    />
-                  </div>
-                  <div className="input-group">
-                    <label className="input-label">Créditos Iniciais</label>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Duração Padrão dos Testes (Horas)</label>
                     <input
                       type="number"
-                      className="form-control"
-                      value={resellerForm.credits}
-                      onChange={(e) => setResellerForm({ ...resellerForm, credits: e.target.value })}
+                      value={settings.trial_default_hours || 4}
+                      onChange={(e) => setSettings({ ...settings, trial_default_hours: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
                     />
                   </div>
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" onClick={() => setModalReseller(false)} className="btn btn-secondary">Cancelar</button>
-                <button type="submit" className="btn btn-primary">Cadastrar Revendedor</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Add/Adjust Credits */}
-      {modalCredits && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>
-                Recarregar Créditos - {modalCredits.username}
-              </h3>
-              <button onClick={() => setModalCredits(null)} className="btn btn-secondary btn-sm"><X size={16} /></button>
-            </div>
-            <form onSubmit={handleUpdateCredits}>
-              <div className="modal-body">
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                  Saldo atual da revenda: <strong>{modalCredits.credits.toFixed(1)} créditos</strong>.
-                  Insira um valor positivo para adicionar ou negativo para estornar.
-                </p>
-                <div className="input-group">
-                  <label className="input-label">Quantidade de Créditos</label>
-                  <input
-                    type="number"
-                    step="1"
-                    className="form-control"
-                    required
-                    value={creditForm.amount}
-                    onChange={(e) => setCreditForm({ ...creditForm, amount: e.target.value })}
-                  />
-                </div>
-                <div className="input-group">
-                  <label className="input-label">Motivo / Justificativa</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    required
-                    value={creditForm.reason}
-                    onChange={(e) => setCreditForm({ ...creditForm, reason: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" onClick={() => setModalCredits(null)} className="btn btn-secondary">Cancelar</button>
-                <button type="submit" className="btn btn-primary">Confirmar Transação</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Transfer Client */}
-      {modalTransfer && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>
-                Transferir Cliente: {modalTransfer.username}
-              </h3>
-              <button onClick={() => setModalTransfer(null)} className="btn btn-secondary btn-sm"><X size={16} /></button>
-            </div>
-            <form onSubmit={handleTransferClient}>
-              <div className="modal-body">
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                  Selecione para qual revendedor este cliente será movido. Todas as renovações futuras pertencerão a ele.
-                </p>
-                <div className="input-group">
-                  <label className="input-label">Revendedor de Destino</label>
-                  <select
-                    className="form-control"
-                    value={targetResellerId}
-                    onChange={(e) => setTargetResellerId(e.target.value)}
-                    required
-                  >
-                    {resellers.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name || r.username} (@{r.username}) - Saldo: {r.credits.toFixed(1)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" onClick={() => setModalTransfer(null)} className="btn btn-secondary">Cancelar</button>
-                <button type="submit" className="btn btn-primary">Transferir Agora</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: New Stream */}
-      {modalStream && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Adicionar Conteúdo ao Catálogo</h3>
-              <button onClick={() => setModalStream(false)} className="btn btn-secondary btn-sm"><X size={16} /></button>
-            </div>
-            <form onSubmit={handleCreateStream}>
-              <div className="modal-body">
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
-                  <div className="input-group">
-                    <label className="input-label">Nome do Canal / Filme</label>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Alerta de Créditos Baixos</label>
                     <input
-                      type="text"
-                      className="form-control"
-                      required
-                      placeholder="Ex: HBO Max HD ou Filme Exemplo"
-                      value={streamForm.name}
-                      onChange={(e) => setStreamForm({ ...streamForm, name: e.target.value })}
+                      type="number"
+                      value={settings.reseller_min_credits_alert || 5}
+                      onChange={(e) => setSettings({ ...settings, reseller_min_credits_alert: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
                     />
                   </div>
-                  <div className="input-group">
-                    <label className="input-label">Tipo</label>
-                    <select
-                      className="form-control"
-                      value={streamForm.type}
-                      onChange={(e) => setStreamForm({ ...streamForm, type: e.target.value })}
-                    >
-                      <option value="live">TV Ao Vivo</option>
-                      <option value="movie">Filme VOD</option>
-                      <option value="series">Série VOD</option>
-                    </select>
-                  </div>
                 </div>
 
-                <div className="input-group">
-                  <label className="input-label">URL do Stream (HLS .m3u8 ou MP4)</label>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>WhatsApp de Suporte</label>
                   <input
-                    type="url"
-                    className="form-control"
-                    required
-                    placeholder="https://.../master.m3u8"
-                    value={streamForm.stream_url}
-                    onChange={(e) => setStreamForm({ ...streamForm, stream_url: e.target.value })}
+                    type="text"
+                    value={settings.whatsapp_support_phone || ''}
+                    onChange={(e) => setSettings({ ...settings, whatsapp_support_phone: e.target.value })}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
                   />
                 </div>
 
-                <div className="input-group">
-                  <label className="input-label">URL da Logo / Ícone</label>
-                  <input
-                    type="url"
-                    className="form-control"
-                    placeholder="https://.../logo.png"
-                    value={streamForm.icon_url}
-                    onChange={(e) => setStreamForm({ ...streamForm, icon_url: e.target.value })}
-                  />
-                </div>
-
-                <div className="input-group">
-                  <label className="input-label">Sinopse / Descrição</label>
-                  <textarea
-                    className="form-control"
-                    rows={2}
-                    value={streamForm.description}
-                    onChange={(e) => setStreamForm({ ...streamForm, description: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" onClick={() => setModalStream(false)} className="btn btn-secondary">Cancelar</button>
-                <button type="submit" className="btn btn-primary">Salvar no Catálogo</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Bulk M3U Import */}
-      {modalM3UImport && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '640px' }}>
-            <div className="modal-header">
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Importação em Lote via Playlist M3U</h3>
-              <button onClick={() => setModalM3UImport(false)} className="btn btn-secondary btn-sm"><X size={16} /></button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: '10px 20px', borderRadius: '8px', border: 'none',
+                    background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)', color: '#fff', fontWeight: '700', cursor: 'pointer', marginTop: '10px'
+                  }}
+                >
+                  Salvar Configurações
+                </button>
+              </form>
             </div>
-            <form onSubmit={handleM3UImport}>
-              <div className="modal-body">
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
-                  Cole o conteúdo do arquivo <code>.m3u</code> ou <code>.m3u8</code> abaixo. 
-                  O sistema reconhecerá automaticamente as tags <code>#EXTINF</code>, logos e nomes de canais.
-                </p>
-                <div className="input-group">
-                  <textarea
-                    className="form-control"
-                    rows={10}
-                    required
-                    placeholder={'#EXTM3U\n#EXTINF:-1 tvg-logo="https://..." tvg-name="Canal Teste",Canal Teste HD\nhttp://exemplo.com/live.m3u8'}
-                    value={m3uText}
-                    onChange={(e) => setM3uText(e.target.value)}
-                    style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
-                  />
+          )}
+        </main>
+      </div>
+
+      {/* MODALS */}
+      {/* Modal New Reseller */}
+      {modalReseller && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,7,15,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+          <div style={{ background: '#131828', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', width: '100%', maxWidth: '480px', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#f8fafc', fontWeight: '700' }}>Criar Novo Revendedor</h3>
+              <button onClick={() => setModalReseller(false)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleCreateReseller} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Nome da Revenda *</label>
+                <input type="text" required value={resellerForm.name} onChange={(e) => setResellerForm({ ...resellerForm, name: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Usuário *</label>
+                  <input type="text" required value={resellerForm.username} onChange={(e) => setResellerForm({ ...resellerForm, username: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Senha Inicial *</label>
+                  <input type="password" required value={resellerForm.password} onChange={(e) => setResellerForm({ ...resellerForm, password: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }} />
                 </div>
               </div>
-              <div className="modal-footer">
-                <button type="button" onClick={() => setModalM3UImport(false)} className="btn btn-secondary">Cancelar</button>
-                <button type="submit" className="btn btn-primary">Processar & Importar</button>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>WhatsApp</label>
+                  <input type="text" value={resellerForm.phone} onChange={(e) => setResellerForm({ ...resellerForm, phone: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Créditos Iniciais</label>
+                  <input type="number" value={resellerForm.credits} onChange={(e) => setResellerForm({ ...resellerForm, credits: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
+                <button type="button" onClick={() => setModalReseller(false)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#cbd5e1', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '8px 20px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)', color: '#fff', fontWeight: '700', cursor: 'pointer' }}>Criar Revendedor</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Modal: Block IP */}
+      {/* Modal Credits Ledger */}
+      {modalCredits && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,7,15,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+          <div style={{ background: '#131828', borderRadius: '16px', border: '1px solid rgba(52,211,153,0.3)', width: '100%', maxWidth: '420px', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#f8fafc', fontWeight: '700' }}>
+                Recarregar Créditos: {modalCredits.username}
+              </h3>
+              <button onClick={() => setModalCredits(null)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+            <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '0 0 14px 0' }}>
+              Saldo atual: <strong style={{ color: '#34d399' }}>{modalCredits.credits}</strong> créditos. Toda alteração grava registro na trilha de auditoria.
+            </p>
+            <form onSubmit={handleAdjustCredits} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Quantidade (+ para somar, - para remover)</label>
+                <input type="number" step="any" required value={creditForm.amount} onChange={(e) => setCreditForm({ ...creditForm, amount: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Motivo / Justificativa</label>
+                <input type="text" required value={creditForm.reason} onChange={(e) => setCreditForm({ ...creditForm, reason: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button type="button" onClick={() => setModalCredits(null)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#cbd5e1', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '8px 20px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #10b981, #06b6d4)', color: '#fff', fontWeight: '700', cursor: 'pointer' }}>Efetivar Recarga</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Firewall IP */}
       {modalFirewall && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Bloquear Endereço IP no Firewall</h3>
-              <button onClick={() => setModalFirewall(false)} className="btn btn-secondary btn-sm"><X size={16} /></button>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,7,15,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+          <div style={{ background: '#131828', borderRadius: '16px', border: '1px solid rgba(239,68,68,0.3)', width: '100%', maxWidth: '420px', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#f8fafc', fontWeight: '700' }}>Bloquear Endereço IP</h3>
+              <button onClick={() => setModalFirewall(false)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
             </div>
-            <form onSubmit={handleBlockIp}>
-              <div className="modal-body">
-                <div className="input-group">
-                  <label className="input-label">Endereço IP (IPv4 ou IPv6)</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    required
-                    placeholder="Ex: 189.45.12.33"
-                    value={firewallForm.ip_address}
-                    onChange={(e) => setFirewallForm({ ...firewallForm, ip_address: e.target.value })}
-                  />
-                </div>
-                <div className="input-group">
-                  <label className="input-label">Motivo</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={firewallForm.reason}
-                    onChange={(e) => setFirewallForm({ ...firewallForm, reason: e.target.value })}
-                  />
-                </div>
+            <form onSubmit={handleBlockIp} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Endereço IP</label>
+                <input type="text" required placeholder="192.168.1.100" value={firewallForm.ip_address} onChange={(e) => setFirewallForm({ ...firewallForm, ip_address: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }} />
               </div>
-              <div className="modal-footer">
-                <button type="button" onClick={() => setModalFirewall(false)} className="btn btn-secondary">Cancelar</button>
-                <button type="submit" className="btn btn-danger">Bloquear IP Imediatamente</button>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Motivo</label>
+                <input type="text" required value={firewallForm.reason} onChange={(e) => setFirewallForm({ ...firewallForm, reason: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button type="button" onClick={() => setModalFirewall(false)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#cbd5e1', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '8px 20px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #ef4444, #f97316)', color: '#fff', fontWeight: '700', cursor: 'pointer' }}>Bloquear IP</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Modal: Client Links */}
-      {modalLinks && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Links de Acesso - {modalLinks.username}</h3>
-              <button onClick={() => setModalLinks(null)} className="btn btn-secondary btn-sm"><X size={16} /></button>
+      {/* Modal Category */}
+      {modalCategory && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,7,15,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+          <div style={{ background: '#131828', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', width: '100%', maxWidth: '420px', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#f8fafc', fontWeight: '700' }}>Nova Categoria</h3>
+              <button onClick={() => setModalCategory(false)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
             </div>
-            <div className="modal-body">
-              <div className="input-group">
-                <label className="input-label">Link da Playlist M3U Plus</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="text"
-                    readOnly
-                    className="form-control"
-                    value={`${window.location.origin}/get.php?username=${modalLinks.username}&password=${modalLinks.plain_password || '******'}&type=m3u_plus&output=ts`}
-                  />
-                  <button
-                    onClick={() => copyToClipboard(`${window.location.origin}/get.php?username=${modalLinks.username}&password=${modalLinks.plain_password || '******'}&type=m3u_plus&output=ts`)}
-                    className="btn btn-secondary"
-                  >
-                    <Copy size={16} />
-                  </button>
-                </div>
+            <form onSubmit={handleCreateCategory} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Nome da Categoria</label>
+                <input type="text" required value={categoryForm.name} onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }} />
               </div>
-
-              <div className="input-group">
-                <label className="input-label">URL do WebTV Player</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="text"
-                    readOnly
-                    className="form-control"
-                    value={`${window.location.origin}`}
-                  />
-                  <button
-                    onClick={() => copyToClipboard(window.location.origin)}
-                    className="btn btn-secondary"
-                  >
-                    <Copy size={16} />
-                  </button>
-                </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '4px' }}>Tipo de Conteúdo</label>
+                <select value={categoryForm.type} onChange={(e) => setCategoryForm({ ...categoryForm, type: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}>
+                  <option value="live">TV Ao Vivo</option>
+                  <option value="movie">Filmes</option>
+                  <option value="series">Séries</option>
+                </select>
               </div>
-
-              <div style={{ background: 'var(--bg-input)', padding: '12px', borderRadius: '8px', fontSize: '0.85rem' }}>
-                <div><strong>Host Xtream Codes:</strong> <code>{window.location.origin}</code></div>
-                <div><strong>Usuário:</strong> <code>{modalLinks.username}</code></div>
-                <div><strong>Senha:</strong> <code>{modalLinks.plain_password || '******'}</code></div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button type="button" onClick={() => setModalCategory(false)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#cbd5e1', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '8px 20px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)', color: '#fff', fontWeight: '700', cursor: 'pointer' }}>Salvar Categoria</button>
               </div>
-            </div>
-            <div className="modal-footer">
-              <button onClick={() => setModalLinks(null)} className="btn btn-secondary">Fechar</button>
-            </div>
+            </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }
